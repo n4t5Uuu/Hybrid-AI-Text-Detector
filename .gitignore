@@ -50,3 +50,6 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
+MGTBench-2.0/
+
+data/
