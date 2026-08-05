@@ -48,6 +48,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.pkl
 .pytest_cache/
 
 MGTBench-2.0/
