@@ -84,7 +84,24 @@ To download Kaggle datasets automatically in `data_ingestion.ipynb`, set up your
 2. In the upper right corner of the notebook editor, click **Select Kernel** -> choose **`venv (Python)`**.
 3. Run the cells sequentially to populate:
    - `data/raw/ai/` (Gemini, Claude, GPT-3.5, Llama-3, etc.)
-   - `data/raw/human/` (arXiv, Wikipedia, Gutenberg)
+   - `data/raw/human/` (arXiv, Wikipedia, Gutenberg, BAWE)
+
+---
+
+### 6. Git Ignore Rules (`.gitignore`)
+
+The repository [.gitignore](file:///c:/Users/Alden%20Olmedo/Documents/VSCode/hybrid-ai-framework/.gitignore) automatically ignores large generated datasets, secrets, build artifacts, and virtual environment files. 
+
+Make sure **never** to force-commit any of the following ignored paths:
+
+| Category | Ignored Patterns | Description |
+| :--- | :--- | :--- |
+| **Secrets & API Keys** | `.env*` (`.env.local`, `.env`) | Protects secret Kaggle API keys and tokens. |
+| **Raw & Processed Data** | `data/` (`data/raw/`, `data/processed/`) | All downloaded CSVs, Parquet files, and BAWE zip archives. |
+| **Virtual Environments** | `venv/`, `.venv/`, `env/` | Local Python virtual environment folders. |
+| **Python Cache & Models** | `__pycache__/`, `*.pyc`, `*.pkl`, `.pytest_cache/` | Compiled Python bytecode and serialized pickle files. |
+| **External Repositories** | `MGTBench-2.0/` | Cloned MGTBench benchmark repository. |
+| **Build & Node Artifacts** | `node_modules/`, `.next/`, `out/`, `build/`, `.vercel/` | Frontend dependencies and Next.js production builds. |
 
 ---
 
