@@ -14,6 +14,80 @@ This project proposes a hybrid detection framework that combines:
 
 The goal is to reduce false positive rates on human-written academic text while maintaining strong detection accuracy across academic disciplines.
 
+## Getting Started & Development Setup
+
+Follow these steps to set up your local development environment and run the data ingestion & cleaning pipelines.
+
+### 1. Prerequisites
+- **Python 3.11 – 3.13** installed
+- **Git** installed
+- **VS Code** (recommended editor) with Python and Jupyter extensions
+
+---
+
+### 2. Virtual Environment Setup
+
+Clone the repository and create a Python virtual environment:
+
+```bash
+# Clone the repository
+git clone https://github.com/n4t5Uuu/Hybrid-AI-Text-Detector.git
+cd hybrid-ai-framework
+
+# Create a virtual environment named 'venv'
+python -m venv venv
+```
+
+#### Activate the Virtual Environment:
+- **Windows PowerShell**:
+  ```powershell
+  .\venv\Scripts\Activate.ps1
+  ```
+- **Windows Command Prompt (CMD)**:
+  ```cmd
+  venv\Scripts\activate.bat
+  ```
+- **macOS / Linux**:
+  ```bash
+  source venv/bin/activate
+  ```
+
+---
+
+### 3. Install Project Dependencies
+
+Upgrade `pip` and install all required libraries (PyTorch, Transformers, spaCy, XGBoost, Kaggle, Jupyter, etc.):
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+### 4. Configure API Keys (`.env.local`)
+
+To download Kaggle datasets automatically in `data_ingestion.ipynb`, set up your Kaggle API key:
+
+1. Go to your [Kaggle Account Settings](https://www.kaggle.com/settings/api).
+2. Click **Create New Token** or copy your **API Token** (`KGAT_...`).
+3. Create a `.env.local` file at the root of the project:
+   ```env
+   KAGGLE_API_TOKEN=your_kaggle_api_token_here
+   ```
+*(Note: `.env.local` is listed in `.gitignore` and will never be pushed to GitHub).*
+
+---
+
+### 5. Running the Notebooks in VS Code
+
+1. Open `src/notebooks/data_ingestion.ipynb` in VS Code.
+2. In the upper right corner of the notebook editor, click **Select Kernel** -> choose **`venv (Python)`**.
+3. Run the cells sequentially to populate:
+   - `data/raw/ai/` (Gemini, Claude, GPT-3.5, Llama-3, etc.)
+   - `data/raw/human/` (arXiv, Wikipedia, Gutenberg)
+
+---
+
 ## Authors
 
 - Baltazar, Jorge Kollin T.
