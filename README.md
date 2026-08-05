@@ -171,14 +171,15 @@ The model outputs a probability confidence score via XGBoost's `predict_proba()`
 
 ## Datasets
 
-| Source | Category | Size (approx.) |
+| Source | Category / Source Type | Size (approx.) |
 |---|---|---|
-| BAWE Corpus | Human-written | ~2,800 texts |
-| MGTBench-2.0 | GPT-3.5 generated | ~2,000 texts |
-| QuietImpostor/Claude-3-Opus-Claude-3.5-Sonnet | Claude generated | ~700 texts |
-| Kaggle LLM Generated Student Essays | Gemini-Pro generated | ~3,500 texts |
+| **BAWE Corpus** | Human-written academic texts | ~2,761 text files |
+| **MGTBench-2.0 (Human)** | Human-written reference texts (arXiv, Wikipedia, Gutenberg) | ~83,000 texts |
+| **MGTBench-2.0 (AI)** | AI-generated (GPT-3.5, GPT-4o-mini) | ~222,000 texts |
+| **QuietImpostor / Claude-3 Dataset** | Claude-generated texts | ~9,000 texts |
+| **Kaggle Gemini-Pro LLM DAIGT** | Gemini-Pro generated essays | ~14,000 texts |
 
-Total dataset size: ~9,000 texts, split 70% training / 15% validation / 15% test using stratified sampling.
+Multi-source dataset covering both Human-written and AI-generated text across 16 academic disciplines, split 70% training / 15% validation / 15% test using stratified sampling.
 
 ## Methodology
 
