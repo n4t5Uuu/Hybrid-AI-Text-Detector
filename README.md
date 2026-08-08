@@ -54,12 +54,24 @@ python -m venv venv
 
 ---
 
-### 3. Install Project Dependencies
+### 3. Install Project & Web App Dependencies
 
-Upgrade `pip` and install all required libraries (PyTorch, Transformers, spaCy, XGBoost, Kaggle, Jupyter, etc.):
+#### Python Backend & Data Pipeline Dependencies:
+Upgrade `pip` and install all required machine learning & data pipeline libraries (PyTorch, Transformers, spaCy, XGBoost, Kaggle, Jupyter, etc.):
 
 ```bash
 pip install -r requirements.txt
+```
+
+#### Next.js Frontend Dependencies (Web Application):
+If you are running or developing the Next.js web application interface:
+
+```bash
+# Install Node.js dependencies
+npm install
+
+# Start the Next.js local development server
+npm run dev
 ```
 
 ---
