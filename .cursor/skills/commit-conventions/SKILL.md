@@ -1,10 +1,25 @@
 ---
 name: commit-conventions
-description: Generate properly formatted commit messages following conventional commits with team standards. Use when the user asks for help writing commit messages, creating commits, or reviewing staged changes.
+description: Generate properly formatted commit messages following conventional commits with team standards. Use when the user asks for help writing commit messages, creating commits, or reviewing staged changes. Always encourage micro commits.
 disable-model-invocation: true
 ---
 
 # Commit Message Conventions
+
+## Micro Commits Philosophy
+
+**ALWAYS prefer multiple small commits over one large commit.**
+
+Break changes into logical units:
+- ✅ One feature/fix per commit
+- ✅ One file type per commit (e.g., don't mix code and docs)
+- ✅ Related changes grouped together
+
+**Why micro commits?**
+- Easier to review
+- Easier to revert if needed
+- Better git history readability
+- Easier to cherry-pick changes
 
 ## Format Structure
 
