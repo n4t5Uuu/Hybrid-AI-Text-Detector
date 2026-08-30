@@ -117,6 +117,12 @@ Make sure **never** to force-commit any of the following ignored paths:
 
 ---
 
+## Development Guidelines
+
+- **Commit Conventions**: See [`docs/COMMIT_CONVENTIONS.md`](docs/COMMIT_CONVENTIONS.md) for commit message format
+- **Git Workflow**: See [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md) for branching and PR guidelines
+- **Text Cleaning Reference**: See [`docs/TEXT_CLEANING_API.md`](docs/TEXT_CLEANING_API.md) for cleaning functions
+
 ## Authors
 
 - Baltazar, Jorge Kollin T.
