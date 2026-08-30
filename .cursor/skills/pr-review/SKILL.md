@@ -8,10 +8,13 @@ disable-model-invocation: true
 
 ## Before Creating PR
 
+**NEVER push directly to main!** Always work on a feature branch and create a PR.
+
 1. Review all commits: `git log origin/main..HEAD --oneline`
 2. Check diff summary: `git diff origin/main...HEAD --stat`
 3. Verify all changes are intentional
 4. Ensure tests pass (if applicable)
+5. Push your branch: `git push -u origin your-branch-name`
 
 ## PR Description Format
 
@@ -150,18 +153,36 @@ Before submitting PR:
 - [ ] Tone is conversational, not corporate
 - [ ] No AI buzzwords or phrases
 
-## Example PR Workflow
+## Workflow
 
+When the user asks to create a PR:
+
+1. **Review the changes** (show commits and diff summary)
+2. **Generate the PR description** following the template
+3. **Provide the description as text** for the user to copy-paste
+4. **Remind user to push their branch** so they can create the PR
+
+**Important:** Tell the user they need to push their branch first:
 ```bash
-# 1. Review your changes
-git log origin/main..HEAD --oneline
-git diff origin/main...HEAD --stat
-
-# 2. Push your branch
 git push -u origin your-branch-name
+```
 
-# 3. Create PR on GitHub
-gh pr create --title "refactor(utils): extract cleaning functions to module" --body "$(cat <<'EOF'
+Then they can create the PR on GitHub and paste the description you generated.
+
+## Example Output Format
+
+```markdown
+# PR Title
+refactor(utils): extract cleaning functions to module
+
+# PR Description (copy this)
+## Description
+...
+```
+
+## Example PR Description Template
+
+```markdown
 ## Description
 
 Moved all text cleaning functions from notebook to a reusable Python module.
@@ -195,8 +216,6 @@ reused by other notebooks.
 - New dependency: `langdetect` (already in requirements.txt)
 - Notebook now requires `src/` in Python path
 - If running notebooks outside project root, imports may fail
-EOF
-)"
 ```
 
 ## Natural Language Patterns
