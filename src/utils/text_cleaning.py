@@ -35,6 +35,15 @@ COMMON_LOANWORDS = {
     'expose', 'exposé', 'déjà', 'deja', 'role', 'rôle', 'entree', 'entrée'
 }
 
+# Greek letters used as variables in physics/math leftovers (includes Φ for Faraday)
+GREEK_CHARS = 'Σ∂ΦφϕθΘεδ∇ΔαβγλμπΩω∞'
+
+# Trig names: require math context so English "sin" / "tan" / "sec" are not wiped
+TRIG_PATTERN = (
+    r'(?:arc(?:sin|cos|tan|sec|csc|cot)|a(?:sin|cos|tan)|'
+    r'sinh|cosh|tanh|sin|cos|tan|sec|csc|cot)'
+)
+
 
 # ==============================================================================
 # Core Cleaning Functions
@@ -82,7 +91,10 @@ def clean_math_texts(text):
     # Exponents and derivatives — no bare parens in the token class (see
     # docstring above for why)
     text = re.sub(r'\b[a-zA-Z0-9]+\^[a-zA-Z0-9\+\-]+\b', ' [[EQUATION]] ', text)
-    text = re.sub(r'\bd[A-Za-z]/d[A-Za-z]\b', ' [[EQUATION]] ', text)
+    text = re.sub(
+        rf'(?<![A-Za-z])d[{GREEK_CHARS}A-Za-z][A-Za-z0-9]*/d[A-Za-z]\b',
+        ' [[EQUATION]] ', text
+    )
 
     # "n choose k" style combinatorics notation
     text = re.sub(r'\([a-zA-Z0-9\s\+\-]+choose[a-zA-Z0-9\s\+\-]+\)', '[[EQUATION]]', text)
@@ -188,9 +200,8 @@ def clean_residual_math_noise(text):
     if not isinstance(text, str):
         return text
 
-    # GREEK now includes ∞ (infinity) — was missing before, which is why
-    # "B=∞, C=∞" in algorithm pseudocode wasn't being caught.
-    GREEK = 'Σ∂ΦθΘεδ∇ΔαβγλμπΩω∞'
+    # GREEK now includes ∞ (infinity) and Φ/φ (Faraday flux).
+    GREEK = GREEK_CHARS
 
     # For catching functions like f(x), g(x), etc
     for _ in range(2):
@@ -459,34 +470,177 @@ def clean_music_notation(text):
 
 def merge_continuous_equations(text, tag='[[EQUATION]]'):
     """
-        Merges chains of placeholders (of the given tag) that are only
-        separated by short, non-prose connector fragments (bare numbers,
-        operators, parentheses, single-letter variables, punctuation like
-        ':') into a single placeholder — since these represent one
-        continuous derivation/code block that got fragmented into many
-        separate tags by earlier token-level regex passes.
+        Merges adjacent placeholders separated by operators, short math,
+        trig names, or (for CODE) return/returns. Pair pattern is restricted
+        to math/code connectors so a failed prose pair cannot skip a later
+        [[EQUATION]] + [[EQUATION]] chain.
     """
 
     if not isinstance(text, str):
         return text
 
     esc = re.escape(tag)
-    pattern = re.compile(esc + r'((?:\s*[^\[\].!?]{0,40}?\s*' + esc + r')+)')
-
-    def is_non_prose_connector(fragment):
-        stripped = fragment.replace(tag, '')
-        return not re.search(r'[A-Za-z]{3,}', stripped)
-
-    def replacer(m):
-        if is_non_prose_connector(m.group(1)):
-            return f' {tag} '
-        return m.group(0)
+    if tag == '[[CODE]]':
+        conn = r'(?:\s*(?:[\+\-\*/×÷=]|returns?)\s*)+'
+    else:
+        conn = (
+            r'(?:\s*(?:'
+            r'[\+\-\*/×÷=±]|'
+            r'\d+(?:\.\d+)?|'
+            rf'{TRIG_PATTERN}|'
+            rf'd[{GREEK_CHARS}A-Za-z][A-Za-z0-9]*/d[A-Za-z]|'
+            r'2a|4ac|4a|-b|'
+            r'[-−][Nn]'
+            r')\s*)+'
+        )
+    pair = re.compile(esc + conn + esc, re.IGNORECASE)
 
     prev = None
     while prev != text:
         prev = text
-        text = pattern.sub(replacer, text)
+        text = pair.sub(f' {tag} ', text)
 
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def mop_up_leftover_math_and_code(text):
+    """
+        Folds leftover math/code fragments that sit next to already-inserted
+        placeholders: trig, dΦ/dt, both sides of '=', ±, 2a/4ac, (xn, yn, zn),
+        unit products, and CODE return/operator tails.
+        Run LAST in clean_pipeline, then merge again.
+    """
+    if not isinstance(text, str):
+        return text
+
+    EQ = r'\[\[EQUATION\]\]'
+    CODE = r'\[\[CODE\]\]'
+    OPS = r'[\+\-\*/×÷]'
+    MATH_ATOM = (
+        rf'(?:{EQ}|[{GREEK_CHARS}A-Za-z]\d{{0,2}}|\d+[abcxyzmnr]{{1,3}}|'
+        rf'\d+(?:\.\d+)?|[-−][A-Za-z0-9]+|d[{GREEK_CHARS}A-Za-z][A-Za-z0-9]*/d[A-Za-z])'
+    )
+
+    # Trig in math context only (next to tag, '(', or '=')
+    text = re.sub(
+        rf'\b{TRIG_PATTERN}\s*(?={EQ}|\()',
+        ' [[EQUATION]] ', text, flags=re.IGNORECASE
+    )
+    text = re.sub(
+        rf'(?<={EQ})\s*{TRIG_PATTERN}\b',
+        ' [[EQUATION]] ', text, flags=re.IGNORECASE
+    )
+    text = re.sub(
+        rf'\b{TRIG_PATTERN}\s*=',
+        ' [[EQUATION]] =', text, flags=re.IGNORECASE
+    )
+    # Glued trig: cosθ, cos30° (not "cosine" / "costs")
+    text = re.sub(
+        rf'\b{TRIG_PATTERN}(?:[{GREEK_CHARS}]|\d+°?)',
+        ' [[EQUATION]] ', text, flags=re.IGNORECASE
+    )
+    text = re.sub(rf'{EQ}\s*\d+\s*°', ' [[EQUATION]] ', text)
+
+    # Faraday-style derivatives, optional -N prefix
+    text = re.sub(
+        rf'[-−]?\s*(?:[Nn]\s+)?d[{GREEK_CHARS}A-Za-z][A-Za-z0-9]*/d[A-Za-z]\b',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        rf'[-−]?\s*[Nn]\s*\*?\s*d[{GREEK_CHARS}A-Za-z]/d[A-Za-z]\b',
+        ' [[EQUATION]] ', text
+    )
+
+    # Both sides of '=' including [[EQUATION]] = 0 / 0.03
+    for _ in range(5):
+        text = re.sub(
+            rf'{EQ}\s*=\s*(?:{EQ}|\d+(?:\.\d+)?|{MATH_ATOM})(?:\s*{OPS}\s*(?:{EQ}|{MATH_ATOM}))*',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'(?:{MATH_ATOM}|[A-Za-z]{{1,4}})\s*=\s*[-−]?\s*{EQ}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'{EQ}\s*=\s*[-−]\s*{EQ}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\|\s*{EQ}\s*\|', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{EQ}\s*=\s*\|', ' [[EQUATION]] ', text)
+
+    # Single-letter (or short) term glued to a tag by an operator: x + [[EQUATION]]
+    text = re.sub(rf'\b[A-Za-z]\d{{0,2}}\s*{OPS}\s*{EQ}', ' [[EQUATION]] ', text)
+    text = re.sub(rf'{EQ}\s*{OPS}\s*[A-Za-z]\d{{0,2}}\b', ' [[EQUATION]] ', text)
+    text = re.sub(r'\+/-', ' [[EQUATION]] ', text)
+
+    # Algebraic coefficients next to tags or slash (not every "2x" in prose)
+    text = re.sub(rf'{EQ}\s*/\s*\d+[abcxyz]{{1,3}}\b', ' [[EQUATION]] ', text)
+    text = re.sub(rf'\b[abcxyz]/\d+[abcxyz]{{1,3}}\b', ' [[EQUATION]] ', text)
+    text = re.sub(r'/\s*\d+[abcxyz]{1,3}\b', ' [[EQUATION]] ', text)
+    text = re.sub(r'\[-b\b', ' [[EQUATION]] ', text)
+    text = re.sub(rf'(?:{EQ}\s*[±]?\s*|\b[±]\s*)-b\b', ' [[EQUATION]] ', text)
+    text = re.sub(
+        rf'(?<=\[\[EQUATION\]\] )\d+[abcxyz]{{1,3}}\b|\b\d+[abcxyz]{{1,3}}\b(?=\s*(?:{EQ}|[±/]))',
+        ' [[EQUATION]] ', text
+    )
+
+    # Coordinate tuples used as Newton/Jacobian points
+    text = re.sub(r'\(\s*[xyz]n(?:\s*,\s*[xyz]n)+\s*\)', ' [[EQUATION]] ', text)
+
+    # Indexed math functions f1, f2, f3 (not "F1 score")
+    text = re.sub(r'\bf[1-9](?:\s*,\s*f[1-9])+\b', ' [[EQUATION]] ', text)
+    text = re.sub(
+        rf'(?:{EQ}|{CODE})\s*,?\s*\bf[1-9]\b|\bf[1-9]\b\s*(?:{EQ}|{CODE})',
+        ' [[EQUATION]] ', text
+    )
+
+    # Dimension / unit products: require a leading number so "form" / "is" are not units
+    text = re.sub(
+        r'\b\d+\s*(?:cm|mm|m|kg|km|s)\s*[×x]\s*\d+'
+        r'(?:\s*(?:cm|mm|m|kg|km|s))?'
+        r'(?:\s*[×x]\s*\d+(?:\s*(?:cm|mm|m|kg|km|s))?)*',
+        ' [[EQUATION]] ', text, flags=re.IGNORECASE
+    )
+    text = re.sub(
+        rf'{EQ}(?:\s*(?:cm|mm|m))?(?:\s*[×x]\s*\d+(?:\s*(?:cm|mm|m))?)+\s*(?:{EQ})?',
+        ' [[EQUATION]] ', text, flags=re.IGNORECASE
+    )
+
+    # CODE: return/returns and operators around tags
+    text = re.sub(rf'\breturns?\s+{CODE}', ' [[CODE]] ', text, flags=re.IGNORECASE)
+    text = re.sub(rf'{CODE}\s*{OPS}\s*{CODE}', ' [[CODE]] ', text)
+    text = re.sub(rf'{CODE}\s+returns\s+{CODE}', ' [[CODE]] ', text, flags=re.IGNORECASE)
+
+    text = re.sub(r'(\[\[EQUATION\]\]\s*){2,}', '[[EQUATION]] ', text)
+    text = re.sub(r'(\[\[CODE\]\]\s*){2,}', '[[CODE]] ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def clean_code_assignments(text):
+    """
+        Replaces code-style numeric assignments (num = -1) when they sit next
+        to [[CODE]] or iteration/condition keywords — not algebraic x = -3.
+    """
+    if not isinstance(text, str):
+        return text
+
+    text = re.sub(
+        r'\b(?:Iteration\s+\d+:\s*)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*-?\d+\s*,\s*condition(?:\s+(?:false|true))?\b',
+        ' [[CODE]] ', text, flags=re.IGNORECASE
+    )
+    text = re.sub(
+        r'(?:\[\[CODE\]\]\s*[,:]?\s*)[A-Za-z_][A-Za-z0-9_]*\s*=\s*-?\d+\b',
+        ' [[CODE]] ', text
+    )
+    text = re.sub(
+        r'\b[A-Za-z_][A-Za-z0-9_]*\s*=\s*-?\d+\b(?=\s*,\s*(?:condition|true|false))',
+        ' [[CODE]] ', text, flags=re.IGNORECASE
+    )
+    text = re.sub(
+        r'(?i)(?:initialized to\s+)\d+',
+        'initialized to [[CODE]]', text
+    )
+
+    text = re.sub(r'(\[\[CODE\]\]\s*){2,}', '[[CODE]] ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
@@ -633,6 +787,7 @@ def clean_pipeline(text):
     text = clean_url(text)
     text = clean_pseudocode_and_diagrams(text)
     text = clean_code_texts(text)
+    text = clean_code_assignments(text)
     text = clean_music_notation(text)
     text = clean_complexity_notation(text)
     text = strip_reference_list(text)
@@ -641,6 +796,10 @@ def clean_pipeline(text):
     text = clean_bare_expressions(text)
     text = clean_math_texts(text)
     text = clean_residual_math_noise(text)
+    text = merge_continuous_equations(text, tag='[[EQUATION]]')
+    text = merge_continuous_equations(text, tag='[[CODE]]')
+    text = mop_up_leftover_math_and_code(text)
+    text = clean_code_assignments(text)
     text = merge_continuous_equations(text, tag='[[EQUATION]]')
     text = merge_continuous_equations(text, tag='[[CODE]]')
     return text

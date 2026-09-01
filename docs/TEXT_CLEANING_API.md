@@ -60,8 +60,15 @@ Removes: `1.`, `a)`, `i.`, `- bullet`
 Cuts off everything after "References:" or "Bibliography:"
 
 ### `merge_continuous_equations(text, tag='[[EQUATION]]')`
-Merges adjacent placeholders separated by non-prose fragments  
-Example: `[[EQUATION]] + [[EQUATION]]` → `[[EQUATION]]`
+Merges adjacent placeholders separated by operators, short math, trig names, or (for CODE) `return`/`returns`  
+Example: `[[EQUATION]] + [[EQUATION]]` → `[[EQUATION]]`  
+Example: `[[CODE]] returns [[CODE]]` → `[[CODE]]`
+
+### `mop_up_leftover_math_and_code(text)`
+Last-pass fold for leftovers next to tags: trig (`cos [[EQUATION]]`), `dΦ/dt`, both sides of `=`, `±`, `2a`/`4ac`/`b/2a`, `(xn, yn, zn)`, `f1, f2, f3`, unit products (`cm × 30 cm × 20`)
+
+### `clean_code_assignments(text)`
+Code-only numeric assignments like `num = -1, condition false` next to `[[CODE]]` or Iteration/condition keywords
 
 ---
 
@@ -100,10 +107,11 @@ Catches equation-heavy clusters that whole-document density misses
 **USE THIS ONE** - runs all cleaners in the right order
 
 Order:
-1. URLs → code/diagrams → markdown code → music → complexity
+1. URLs → code/diagrams → markdown code → code assignments → music → complexity
 2. References → citations → list markers
 3. Math (3 passes: bare → full → residual)
 4. Merge adjacent tags
+5. Mop-up leftover math/code fragments, then merge again
 
 Example:
 ```python
