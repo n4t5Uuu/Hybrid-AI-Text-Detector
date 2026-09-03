@@ -69,8 +69,26 @@ def clean_math_texts(text):
     text = re.sub(r'\$\$.*?\$\$', ' [[EQUATION]] ', text, flags=re.DOTALL)
     text = re.sub(r'\\\[.*?\\\]', ' [[EQUATION]] ', text, flags=re.DOTALL)
 
-    # LaTeX inline math
-    text = re.sub(r'\$([^\$\n]+)\$', ' [[EQUATION]] ', text)
+    # LaTeX inline math — require real math so $perseverance$ / $0.3 trillion ... $19.5
+    # currency spans are not treated as equations.
+    def _inline_math_replacer(m):
+        inner = m.group(1).strip()
+        if not inner:
+            return m.group(0)
+        words = re.findall(r'[A-Za-z]{3,}', inner)
+        if len(words) >= 3:
+            return m.group(0)
+        # Currency/prose between two $: "$0.3 trillion in 1970 to $19.5"
+        long_words = re.findall(r'[A-Za-z]{4,}', inner)
+        if long_words and (' ' in inner) and '\\' not in inner:
+            return m.group(0)
+        has_math = bool(re.search(rf'[\\^_+\-*/=<>]|[0-9]|[{GREEK_CHARS}]', inner))
+        is_short_id = bool(re.fullmatch(r'[A-Za-z]{1,2}', inner))
+        if has_math or is_short_id:
+            return ' [[EQUATION]] '
+        return m.group(0)
+
+    text = re.sub(r'\$([^\$\n]+)\$', _inline_math_replacer, text)
     text = re.sub(r'\\\((.*?)\\\)', ' [[EQUATION]] ', text)
 
     # Common LaTeX commands
@@ -93,6 +111,16 @@ def clean_math_texts(text):
     text = re.sub(r'\b[a-zA-Z0-9]+\^[a-zA-Z0-9\+\-]+\b', ' [[EQUATION]] ', text)
     text = re.sub(
         rf'(?<![A-Za-z])d[{GREEK_CHARS}A-Za-z][A-Za-z0-9]*/d[A-Za-z]\b',
+        ' [[EQUATION]] ', text
+    )
+    # Parenthesized derivatives: (mv)/dt, d(mv)/dt — no \b before '(' (space is non-word)
+    text = re.sub(
+        r'(?<![A-Za-z])d?\s*\((?![^)]*[A-Za-z]{3,})[^)]{1,20}\)\s*/\s*d[A-Za-z]\b',
+        ' [[EQUATION]] ', text
+    )
+    # Short math assignments with unary minus: b = -5, c = 2 (not "year = 2020")
+    text = re.sub(
+        r'\b[A-Za-z]{1,3}\s*=\s*-?\d+(?:\.\d+)?\b',
         ' [[EQUATION]] ', text
     )
 
@@ -222,6 +250,15 @@ def clean_residual_math_noise(text):
     # For the Unicode of fraction and superscript characters attached to a term
     text = re.sub(r'[a-zA-Z0-9\)]*[½⅓¼¾⅔⅕⅖⅗][a-zA-Z0-9\(]*', ' [[EQUATION]] ', text)
     text = re.sub(r'\b[a-zA-Z0-9\)]+[²³¹⁰⁴⁵⁶⁷⁸⁹]+', ' [[EQUATION]] ', text)
+    # Superscript / subscript glued to an already-inserted tag: [[EQUATION]]² / 2, ²h/3
+    text = re.sub(
+        r'\[\[EQUATION\]\]\s*[A-Za-z]?[²³¹⁰⁴⁵⁶⁷⁸⁹]+[A-Za-z0-9]*(?:\s*/\s*\d+)?',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        r'\[\[EQUATION\]\]\s*[₀₁₂₃₄₅₆₇₈₉ₐₑₒₓₙ]+',
+        ' [[EQUATION]] ', text
+    )
 
     # Plus-minus: ±b, ± 1
     text = re.sub(r'±\s*[a-zA-Z0-9\.\(\)]+', ' [[EQUATION]] ', text)
@@ -268,6 +305,16 @@ def clean_residual_math_noise(text):
     text = re.sub(r'<\s*(?=\[\[EQUATION\]\])', '', text)
     text = re.sub(r'(?<=\[\[EQUATION\]\])\s*>', '', text)
 
+    # Repeat after Greek: π²h → [[EQUATION]] ²h
+    text = re.sub(
+        r'\[\[EQUATION\]\]\s*[A-Za-z]?[²³¹⁰⁴⁵⁶⁷⁸⁹]+[A-Za-z0-9]*(?:\s*/\s*\d+)?',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        r'\[\[EQUATION\]\]\s*[₀₁₂₃₄₅₆₇₈₉ₐₑₒₓₙ]+',
+        ' [[EQUATION]] ', text
+    )
+
     # Consolidate and clean whitespace
     text = re.sub(r'(\[\[EQUATION\]\]\s*){2,}', '[[EQUATION]] ', text)
     text = re.sub(r'\s+', ' ', text).strip()
@@ -298,8 +345,14 @@ def clean_pseudocode_and_diagrams(text):
     if not isinstance(text, str):
         return text
 
+    # [Dashboard] [[EQUATION]] -- Fuel Gauge (diagram node split by a math tag)
     text = re.sub(
-        r'(?:\[[^\[\]]{1,30}\][\s\->|]{0,6}){2,}\[[^\[\]]{1,30}\]',
+        r'\[[^\[\]]{1,30}\]\s*\[\[EQUATION\]\]\s*[|\->]{2,}\s*[A-Za-z][A-Za-z0-9 ]{0,40}',
+        ' [[CODE]] ', text
+    )
+    # 2+ [node] groups — connector must include | - > / so "[1] [2]" citations stay
+    text = re.sub(
+        r'\[[^\[\]]{1,30}\](?:[ \t]*[|/>\-][ \t|/>\-]{0,9}\[[^\[\]]{1,30}\])+',
         ' [[CODE]] ', text
     )
 
@@ -384,8 +437,9 @@ def clean_list_numbering(text):
     # Numbered list markers: "1.", "2.", "\n3."
     text = re.sub(r'(?:^|(?<=[\s:;\.]))\d{1,2}\.\s+(?=[A-Za-z])', ' ', text)
 
-    # Letter list markers
-    text = re.sub(r'(?:^|(?<=[\s:;\.]))[a-zA-Z][\.\)]\s+(?=[A-Za-z0-9])', ' ', text)
+    # Letter list markers: only at start, after newline, or after colon —
+    # not after operators (avoids "a + b. Step 2" → "a + Step 2")
+    text = re.sub(r'(?:^|(?<=\n)|(?<=:))\s*[a-zA-Z][\.\)]\s+(?=[A-Za-z0-9])', ' ', text)
 
     # Roman Numerals list markers
     text = re.sub(r'(?:^|(?<=[\s:;\.]))(?:i{1,3}|iv|v|vi{0,3}|ix|x)[\.\)]\s+', ' ', text, flags=re.IGNORECASE)
@@ -489,8 +543,10 @@ def merge_continuous_equations(text, tag='[[EQUATION]]'):
             r'\d+(?:\.\d+)?|'
             rf'{TRIG_PATTERN}|'
             rf'd[{GREEK_CHARS}A-Za-z][A-Za-z0-9]*/d[A-Za-z]|'
-            r'2a|4ac|4a|-b|'
-            r'[-−][Nn]'
+            r'2a|4ac|4a|-b|bx|ac|bc|cx|ax|ab|'
+            r'[-−][Nn]|'
+            r'[²³¹⁰⁴⁵⁶⁷⁸⁹]+|'
+            r'kg|m/s'
             r')\s*)+'
         )
     pair = re.compile(esc + conn + esc, re.IGNORECASE)
@@ -507,8 +563,9 @@ def merge_continuous_equations(text, tag='[[EQUATION]]'):
 def mop_up_leftover_math_and_code(text):
     """
         Folds leftover math/code fragments that sit next to already-inserted
-        placeholders: trig, dΦ/dt, both sides of '=', ±, 2a/4ac, (xn, yn, zn),
-        unit products, and CODE return/operator tails.
+        placeholders: trig, dΦ/dt, both sides of '=', ±, 2a/4ac, x+c tails,
+        named quantities, (xn, yn, zn), unit products, CODE sandwiches,
+        and CODE return/operator tails.
         Run LAST in clean_pipeline, then merge again.
     """
     if not isinstance(text, str):
@@ -609,6 +666,68 @@ def mop_up_leftover_math_and_code(text):
     text = re.sub(rf'{CODE}\s*{OPS}\s*{CODE}', ' [[CODE]] ', text)
     text = re.sub(rf'{CODE}\s+returns\s+{CODE}', ' [[CODE]] ', text, flags=re.IGNORECASE)
 
+    # Named quantities: Mass (m) = 1,500 kg, Velocity (v) = 20 [[EQUATION]]
+    _named_qty = (
+        rf'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s*\([A-Za-z]{{1,3}}\)\s*=\s*'
+        rf'(?:-?[\d,]+(?:\.\d+)?(?:\s*(?:kg|g|cm|mm|km|mg|ms|mol|Hz|Pa|kJ|J|N|W|K|V|A))?'
+        rf'(?:\s*{EQ})?|{EQ})'
+    )
+    text = re.sub(_named_qty, ' [[EQUATION]] ', text)
+    # Joined givens: [[EQUATION]] - [[EQUATION]] already merges; also "qty - Name (x) ="
+    text = re.sub(
+        rf'{EQ}\s*[-−]\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\s*\([A-Za-z]{{1,3}}\)\s*=',
+        ' [[EQUATION]] ', text
+    )
+
+    # Algebra tails next to tags — require an operator (never a lone letter).
+    # Longer pattern first so "a [[EQUATION]] b + ac" does not leave a leading "a".
+    text = re.sub(
+        rf'\b[A-Za-z]\s*{EQ}\s*[A-Za-z]{{1,3}}\s*{OPS}\s*[A-Za-z]{{1,3}}\b',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        rf'{EQ}\s*[A-Za-z]{{1,3}}\s*{OPS}\s*[A-Za-z]{{1,3}}\b',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        rf'{EQ}\s*{OPS}\s*[A-Za-z]{{1,3}}\s*=\s*-?[A-Za-z0-9]+\b',
+        ' [[EQUATION]] ', text
+    )
+
+    # Leftover differential atom: [[EQUATION]] d Where v is
+    text = re.sub(rf'{EQ}\s+d\s+(?=[Ww]here\b)', ' [[EQUATION]] ', text)
+    text = re.sub(rf'{EQ}\s+d\s*/\s*d[A-Za-z]\b', ' [[EQUATION]] ', text)
+    text = re.sub(
+        rf'{EQ}\s+\((?![^)]*[A-Za-z]{{3,}})[^)]{{0,20}}\)\s*/\s*d[A-Za-z]\b',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        r'(?<![A-Za-z])d?\s*\((?![^)]*[A-Za-z]{3,})[^)]{1,20}\)\s*/\s*d[A-Za-z]\b',
+        ' [[EQUATION]] ', text
+    )
+
+    # Superscript tails after tags (incl. ²h, b², leftover h/3 from π²h/3)
+    text = re.sub(
+        rf'{EQ}\s*[A-Za-z]?[²³¹⁰⁴⁵⁶⁷⁸⁹]+[A-Za-z0-9]*(?:\s*/\s*\d+)?',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(rf'{EQ}\s*[A-Za-z]/\d+\b', ' [[EQUATION]] ', text)
+
+    # [[EQUATION]] / 2 and comma-grouped leftovers: [[EQUATION]] ,000 J
+    text = re.sub(rf'{EQ}\s*/\s*\d+\b', ' [[EQUATION]] ', text)
+    text = re.sub(
+        rf'{EQ}\s*,\d{{3}}(?:\s*(?:kJ|kg|cm|mm|km|J|N|W|m|s))?\b',
+        ' [[EQUATION]] ', text
+    )
+
+    # Summation next to a tag only
+    text = re.sub(rf'\bsum\s+(?:from\s+)?(?={EQ})', ' [[EQUATION]] ', text, flags=re.IGNORECASE)
+    text = re.sub(rf'(?<={EQ})\s*sum\b', ' [[EQUATION]] ', text, flags=re.IGNORECASE)
+
+    # Debugging walkthrough sandwich — not a lone CODE beside a lone EQUATION
+    for _ in range(3):
+        text = re.sub(rf'{CODE}\s*{EQ}\s*{CODE}', ' [[CODE]] ', text)
+
     text = re.sub(r'(\[\[EQUATION\]\]\s*){2,}', '[[EQUATION]] ', text)
     text = re.sub(r'(\[\[CODE\]\]\s*){2,}', '[[CODE]] ', text)
     text = re.sub(r'\s+', ' ', text).strip()
@@ -646,32 +765,82 @@ def clean_code_assignments(text):
 
 def is_academic_content(prompt="", text=""):
     """
-        This function returns False if either the prompt of the text contains a creative,
-        fictional, commercial script, or stage-direction markers that fall outside the
-        academic scope
+        Returns False when the prompt (or stage-direction markers in either
+        field) signals creative, fictional, commercial, or non-academic work.
+        Creative keywords are matched on the prompt only so an academic
+        response that happens to say "vivid scene" does not drop the row.
     """
 
-    combined = (str(prompt) + " " + str(text)).lower()
+    prompt_l = str(prompt).lower()
+    combined = prompt_l + " " + str(text).lower()
 
     creative_keywords = [
         'script', 'commercial', 'advertisement', 'ad script', 'screenplay',
-        'short story', 'story', 'novel', 'fiction', 'fairy tale', 'fairytale',
+        'short story', 'novel', 'fairy tale', 'fairytale',
         'poem', 'poetry', 'lyrics', 'song', 'monologue', 'dialogue between',
         'playwright', 'haiku', 'sonnet', 'screenwriter', 'broadway', 'fanfiction',
         'imagine you are', 'shapeshift', 'shapeshifting', 'roleplay', 'role-play',
-        'pretend you are', 'you wake up as', 'from the perspective of a',
+        'pretend you are', 'pretend that you are', 'pretend to be',
+        'you wake up as',
+        'from the perspective of a',
         'paint the vivid picture', 'paint a vivid picture', 'vivid picture of',
+        'vivid scenes', 'vivid scene', 'in vivid detail',
+        'describing in vivid detail', 'explore the senses',
+        'sensory-rich', 'sensory rich', 'leave out function words',
+        'run with passion', 'express yourself freely',
+        'imagine yourself as', 'imagine discovering', 'imagine walking',
+        'imagine interacting', 'in first person', 'fight scene',
+        'fantasy tale', 'whimsical tale', 'heartwarming tale',
+        'crash landed', 'blank canvas', 'lyrical passage',
+        'motivational essay', 'action thriller', 'compose a piano sonata',
+        'elderly elephant', 'typical day in the life',
         'epic battle', 'describe in vivid detail',
         "captivating the reader's imagination", 'captivate the reader',
-        'lore behind', 'board game', 'video game'
+        'lore behind', 'board game', 'video game',
+        # Fiction / scene writing
+        'magical girl anime', 'giant robots defending',
+        'slice-of-life scene', 'describe an original anime',
+        'original anime plot', 'write a scene where',
+        'favorite anime', 'emerald green dragon',
+        'unknown land of wonder and magic', 'climactic battle scene',
+        "wizard's tale", 'owl named archimedes',
+        'surrealist painting', 'dreamlike symbols',
+        'movie scenes from three', 'psychological thriller movie',
+        'iconic horror movie scene', 'film noir crime drama',
+        'day-in-the-life narrative', 'walk a mile in the paws',
+        'time travels from a rural farm pond',
+        'whimsical design',
+        # Animal / nature narrative (not expository biology)
+        'stroll through the wildlife sanctuary',
+        'walk through a farm and describe',
+        'observe the behavior of an elephant enclosure',
+        'observe the habits and personalities of various animals',
+        # Sports drill / performance (not coaching essays)
+        'practice your field goal', 'practice your dribbling',
+        'run fast like the wind', 'shoot for the basket',
+        'perform soccer tricks', 'throw three strike pitches',
+        'at your mark, get set, leap',
+        # Compose music (not music-history essays)
+        'compose a classical music piece in the style of',
+        'generate a three-part symphony',
+        'compose a symphony movement that captures',
     ]
 
-    if any(kw in combined for kw in creative_keywords):
+    if any(kw in prompt_l for kw in creative_keywords):
+        return False
+
+    # Prompt-only regex for creative framing without catching analysis essays
+    prompt_patterns = [
+        r'\bdescribe an original (?:anime|scene)\b',
+        r'\bwrite a (?:scene|plot summary of one episode)\b',
+        r'\bfrom the perspective of the farm\'s\b',
+        r'\bnarrate a day in their journey\b',
+        r'\bcompose a (?:musical composition|fable)\b',
+    ]
+    if any(re.search(p, prompt_l) for p in prompt_patterns):
         return False
 
     # Stage Direction & Script Structural Markers, plus letter/email
-    # salutation and sign-off patterns (personal letters are a different
-    # genre from BAWE's academic essays/reports)
     script_patterns = [
         r'\[visual:', r'\[audio:', r'\[music', r'\[sfx:', r'\[scene',
         r'\[camera', r'\[upbeat', r'\[fade', r'\bnarrator:', r'\bint\.\s', r'\bext\.\s',

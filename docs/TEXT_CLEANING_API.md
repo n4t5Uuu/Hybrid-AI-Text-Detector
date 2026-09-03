@@ -11,7 +11,7 @@ Quick reference for all the cleaning functions we use in the project. Everything
 ### `clean_math_texts(text)`
 Removes LaTeX and mathematical notation → `[[EQUATION]]`
 
-Cleans: LaTeX environments, `$$math$$`, `$inline$`, `\[\]`, integrals, derivatives, comparisons, Greek letters
+Cleans: LaTeX environments, `$$math$$`, `$inline$` (math only, not `$word$` or currency spans), `\[\]`, integrals, `(mv)/dt`, `b = -5`, comparisons, Greek letters
 
 ### `clean_bare_expressions(text)`  
 Catches leftover math that `clean_math_texts()` missed
@@ -21,7 +21,7 @@ Cleans: Factorials `n!`, fractions `1/2`, parenthesized expressions `(x+y)`
 ### `clean_residual_math_noise(text)`
 Final pass for Unicode math symbols
 
-Cleans: `α β Σ ∞`, `f(x)`, `|x|`, `√x`, `²³`, `±`, subscripts like `xn+1`
+Cleans: `α β Σ ∞`, `f(x)`, `|x|`, `√x`, `²³`, `[[EQUATION]]²`, `±`, subscripts like `xn+1`
 
 ---
 
@@ -35,7 +35,7 @@ Cleans: `` ```code``` ``, `` `inline` ``
 ### `clean_pseudocode_and_diagrams(text)`
 Catches non-markdown code
 
-Cleans: `[Start] -> [End]`, `class Foo {}`, `object.method()`, Python/JS keywords
+Cleans: `[Start] -> [End]`, `[Car] |-- [Dashboard]`, `class Foo {}`, `object.method()`, Python/JS keywords
 
 ---
 
@@ -54,7 +54,7 @@ Cleans: `https://...`, `www....`
 Cleans: `C-G-D-A`, `F#-Bb-D`
 
 ### `clean_list_numbering(text)`
-Removes: `1.`, `a)`, `i.`, `- bullet`
+Removes: `1.`, `a)` / `b.` after start/newline/colon (not after `a + b. Step`), `i.`, `- bullet`
 
 ### `strip_reference_list(text)`
 Cuts off everything after "References:" or "Bibliography:"
@@ -65,7 +65,7 @@ Example: `[[EQUATION]] + [[EQUATION]]` → `[[EQUATION]]`
 Example: `[[CODE]] returns [[CODE]]` → `[[CODE]]`
 
 ### `mop_up_leftover_math_and_code(text)`
-Last-pass fold for leftovers next to tags: trig (`cos [[EQUATION]]`), `dΦ/dt`, both sides of `=`, `±`, `2a`/`4ac`/`b/2a`, `(xn, yn, zn)`, `f1, f2, f3`, unit products (`cm × 30 cm × 20`)
+Last-pass fold for leftovers next to tags: trig, `dΦ/dt`, both sides of `=`, `±`, `2a`/`4ac`/`x + c`, named quantities (`Mass (m) = 1,500 kg`), `(xn, yn, zn)`, unit products, `[[CODE]] [[EQUATION]] [[CODE]]` sandwiches
 
 ### `clean_code_assignments(text)`
 Code-only numeric assignments like `num = -1, condition false` next to `[[CODE]]` or Iteration/condition keywords
@@ -77,7 +77,7 @@ Code-only numeric assignments like `num = -1, condition false` next to `[[CODE]]
 ### `is_academic_content(prompt="", text="")`
 Returns `False` if text is creative/non-academic
 
-Filters out: poems, stories, scripts, ads, letters, stage directions
+Filters out: poems, stories, scripts, ads, letters, stage directions, vivid/sensory creative prompts, roleplay, original-fiction anime/scenes, sports-drill prompts, compose-a-symphony tasks (matched on **prompt only**)
 
 ### `contains_foreign_language(text)`
 Returns `True` if text has non-English content
