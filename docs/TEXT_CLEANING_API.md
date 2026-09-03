@@ -1,6 +1,12 @@
 # Text Cleaning Functions Reference
 
-**File:** `src/utils/text_cleaning.py`
+**Package:** `src/utils/cleaning/`
+
+- `cleaning_methods.py` — regex cleaners, filters, `clean_pipeline`, constants
+- `placeholder_density.py` — row density filters
+- `dataset_cleaning.py` — `clean_claude_dataset`, `clean_mgtbench_ai_dataset`
+
+Import from `utils.cleaning`.
 
 Quick reference for all the cleaning functions we use in the project. Everything here replaces noise with placeholder tags like `[[EQUATION]]`, `[[CODE]]`, etc.
 
@@ -115,7 +121,7 @@ Order:
 
 Example:
 ```python
-from utils.text_cleaning import clean_pipeline
+from utils.cleaning import clean_pipeline
 
 text = "The paper (Smith, 2020) shows $E=mc^2$ with O(n) complexity."
 cleaned = clean_pipeline(text)
@@ -145,15 +151,16 @@ claude_dataset = RAW_AI_DIR / 'claude_dataset.csv'
 df = clean_claude_dataset(claude_dataset, PROCESSED_AI_DIR, sample_size=None)
 ```
 
-### `clean_mgtbench_pipeline(text)`
-MGTBench row cleaner: flattens newlines/tabs, runs `clean_pipeline()`, then converts `[[EQUATION]]` → `[EQUATION]`.
+### `preprocess_mgtbench_text(text)`
+Removed — MGTBench uses `clean_pipeline()` directly (newline flattening is handled inside the shared pipeline).
 
-### `clean_mgtbench_ai_dataset(mgtbench_csv_path, processed_dir, sample_size=None)`
-Full pipeline for MGTBench AI (`id`, `text`, `file`):
+### `clean_mgtbench_ai_dataset(mgtbench_csv_path, processed_dir, sample_size=None, density_threshold=0.4, drop_foreign_rows=True)`
+Full pipeline for MGTBench AI (`id`, `text`, `file`) — mirrors `clean_claude_dataset`:
 1. Loads CSV
-2. Runs `clean_mgtbench_pipeline()` on each `text` row
-3. Drops empty or placeholder-only rows
-4. Saves `mgtbench_ai_dataset_cleaned.csv` with summary stats
+2. Filters foreign language on raw text (optional)
+3. Runs `clean_pipeline()` on each row
+4. Drops empty rows and rows failing `placeholder_density()` / `placeholder_density_windowed()`
+5. Saves `mgtbench_ai_dataset_cleaned.csv` with summary stats (uses `[[EQUATION]]` tags like Claude)
 
 Use in notebook:
 ```python

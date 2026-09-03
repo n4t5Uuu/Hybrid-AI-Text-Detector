@@ -1,6 +1,6 @@
 ---
 name: text-cleaning
-description: Extend and verify academic text cleaning for math, code, citations, and related noise using src/utils/text_cleaning.py. Use when leftover equations, trig, physics formulas, code fragments, or placeholder chains appear in cleaned CSVs, or when the user asks to clean math, mop up noise, or re-run the Claude clean.
+description: Extend and verify academic text cleaning for math, code, citations, and related noise using src/utils/cleaning/. Use when leftover equations, trig, physics formulas, code fragments, or placeholder chains appear in cleaned CSVs, or when the user asks to clean math, mop up noise, or re-run the Claude clean.
 disable-model-invocation: true
 ---
 
@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Replace non-prose (math, code, citations, URLs, complexity, music) with placeholder tags. Do not delete academic prose around it.
 
-**Canonical code:** `src/utils/text_cleaning.py`  
+**Canonical code:** `src/utils/cleaning/` (`cleaning_methods.py`, `placeholder_density.py`, `dataset_cleaning.py`)  
 **Team reference:** `docs/TEXT_CLEANING_API.md`  
 **Pattern catalog:** [patterns.md](patterns.md)
 
@@ -84,11 +84,11 @@ After adding mop-up or merge patterns, keep the **final merge pass** in `clean_p
 5. Count the target leftovers before vs after (see [patterns.md](patterns.md)). Success = those counts drop, and English prose is still intact.
 6. Update `docs/TEXT_CLEANING_API.md` only if you added a function or changed pipeline order.
 
-Use the venv with `langdetect`. Insert `src` on `sys.path` when importing `utils.text_cleaning`. Set `PYTHONIOENCODING=utf-8` on Windows when printing snippets.
+Use the venv with `langdetect`. Insert `src` on `sys.path` when importing `utils.cleaning`. Set `PYTHONIOENCODING=utf-8` on Windows when printing snippets.
 
 ## Do not
 
-- Edit cleaning logic in `data_cleaning.ipynb` — import from the module
+- Edit cleaning logic in `data_cleaning.ipynb` — import from `utils.cleaning`
 - Rearrange `clean_pipeline` steps
 - Merge a lone `[[CODE]]` with a lone `[[EQUATION]]` (sandwich of CODE/EQUATION/CODE is the exception)
 - Drop rows to hide leftovers; fix the regex
