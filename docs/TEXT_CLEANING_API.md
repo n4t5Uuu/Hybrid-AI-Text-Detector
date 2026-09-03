@@ -145,6 +145,22 @@ claude_dataset = RAW_AI_DIR / 'claude_dataset.csv'
 df = clean_claude_dataset(claude_dataset, PROCESSED_AI_DIR, sample_size=None)
 ```
 
+### `clean_mgtbench_pipeline(text)`
+MGTBench row cleaner: flattens newlines/tabs, runs `clean_pipeline()`, then converts `[[EQUATION]]` → `[EQUATION]`.
+
+### `clean_mgtbench_ai_dataset(mgtbench_csv_path, processed_dir, sample_size=None)`
+Full pipeline for MGTBench AI (`id`, `text`, `file`):
+1. Loads CSV
+2. Runs `clean_mgtbench_pipeline()` on each `text` row
+3. Drops empty or placeholder-only rows
+4. Saves `mgtbench_ai_dataset_cleaned.csv` with summary stats
+
+Use in notebook:
+```python
+mgtbench_ai_path = RAW_AI_DIR / 'mgtbench_ai_dataset.csv'
+df = clean_mgtbench_ai_dataset(mgtbench_ai_path, PROCESSED_AI_DIR, sample_size=None)
+```
+
 ---
 
 ## Placeholder Tags We Use

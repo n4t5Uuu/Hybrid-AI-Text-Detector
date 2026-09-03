@@ -10,7 +10,7 @@ import re
 import ast
 import pandas as pd
 from pathlib import Path
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import IPython.display as ipd
 from langdetect import detect, LangDetectException
 
@@ -1125,3 +1125,124 @@ def clean_claude_dataset(claude_csv_path, processed_dir, sample_size=None, densi
     ipd.display(df_processed.head(20))
 
     return df_processed
+
+
+MGTBENCH_PLACEHOLDER_PATTERN = (
+    r'\[\[(?:EQUATION|CODE|CITATION|COMPLEXITY|URL|FOREIGN|MUSIC)\]\]'
+)
+
+
+def flatten_mgtbench_text(text):
+    """Flatten escaped and literal newlines/tabs before the shared pipeline."""
+    if not isinstance(text, str):
+        return text
+    text = text.replace('\r', ' ')
+    text = text.replace('\n', ' ')
+    text = text.replace('\\n', ' ')
+    text = text.replace('\\t', ' ')
+    return text
+
+
+def format_mgtbench_equation_tags(text):
+    """MGTBench processed output uses single-bracket [EQUATION] tags."""
+    if not isinstance(text, str):
+        return text
+    text = re.sub(r'\[\[EQUATION\]\]', '[EQUATION]', text)
+    text = re.sub(r'(?:\s*\[EQUATION\]\s*){2,}', ' [EQUATION] ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def clean_mgtbench_pipeline(text):
+    """
+    MGTBench cleaning: flatten newlines, run the shared clean_pipeline, then
+    format equation tags as [EQUATION] for model input.
+    """
+    text = flatten_mgtbench_text(text)
+    text = clean_pipeline(text)
+    text = format_mgtbench_equation_tags(text)
+    return text
+
+
+def _is_mgtbench_placeholder_only(text):
+    if not isinstance(text, str) or not text.strip():
+        return True
+    if re.fullmatch(r'(?:\s*\[EQUATION\]\s*)+', text):
+        return True
+    return bool(re.fullmatch(rf'(?:{MGTBENCH_PLACEHOLDER_PATTERN}\s*)+', text))
+
+
+def clean_mgtbench_ai_dataset(mgtbench_csv_path, processed_dir, sample_size=None):
+    """
+    Cleans the MGTBench AI CSV (id, text, file), drops empty or placeholder-only
+    rows, saves to processed_dir, and returns the cleaned DataFrame.
+    """
+    mgtbench_csv_path = Path(mgtbench_csv_path)
+    if not mgtbench_csv_path.exists():
+        print(f"File not found at: {mgtbench_csv_path}")
+        return None
+
+    print(
+        f"Loading {'first ' + str(sample_size) if sample_size else 'all'} rows "
+        f"from {mgtbench_csv_path.name}..."
+    )
+    df = pd.read_csv(mgtbench_csv_path, nrows=sample_size)
+    original_rows = len(df)
+
+    df = df.dropna(subset=['text']).copy()
+    df['text'] = df['text'].astype(str).str.strip()
+    df = df[df['text'] != '']
+
+    print("Cleaning MGTBench AI dataset...")
+    cleaned_texts = []
+    for text in tqdm(df['text'], total=len(df), desc="Processing Rows", unit="row"):
+        cleaned_texts.append(clean_mgtbench_pipeline(text))
+    df['text'] = cleaned_texts
+    df['text'] = df['text'].str.strip()
+    df = df[df['text'] != '']
+    df = df[~df['text'].map(_is_mgtbench_placeholder_only)]
+    df = df.reset_index(drop=True)
+
+    rows_removed = original_rows - len(df)
+    summary_data = {
+        'Metric': [
+            'Total Rows Loaded',
+            'Rows Removed',
+            'Cleaned Rows Kept',
+            '[EQUATION] Tags Inserted',
+            '[[CODE]] Tags Inserted',
+            '[[CITATION]] Tags Inserted',
+            '[[COMPLEXITY]] Tags Inserted',
+            '[[URL]] Tags Inserted',
+            'Exact Duplicate Rows',
+            'Unique Source Files',
+        ],
+        'Count': [
+            original_rows,
+            rows_removed,
+            len(df),
+            df['text'].str.count(r'\[EQUATION\]').sum(),
+            df['text'].str.count(r'\[\[CODE\]\]').sum(),
+            df['text'].str.count(r'\[\[CITATION\]\]').sum(),
+            df['text'].str.count(r'\[\[COMPLEXITY\]\]').sum(),
+            df['text'].str.count(r'\[\[URL\]\]').sum(),
+            df.duplicated(subset=['text']).sum(),
+            df['file'].nunique() if 'file' in df.columns else None,
+        ],
+    }
+
+    print("\n--- MGTBENCH AI CLEANING SUMMARY ---")
+    ipd.display(pd.DataFrame(summary_data))
+
+    filename = (
+        f"mgtbench_ai_dataset_cleaned_{sample_size}.csv"
+        if sample_size else "mgtbench_ai_dataset_cleaned.csv"
+    )
+    output_path = Path(processed_dir) / filename
+    df.to_csv(output_path, index=False)
+    print(f"\nSuccessfully saved cleaned dataset ({len(df)} rows) to:\n  {output_path.resolve()}")
+
+    print("\n--- SAMPLE CLEANED DATA (FIRST 10 ROWS) ---")
+    ipd.display(df.head(10))
+
+    return df
