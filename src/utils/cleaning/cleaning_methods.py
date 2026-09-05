@@ -486,30 +486,112 @@ def clean_list_numbering(text):
 
     return text
 
+
+_CITATION_YEAR = r'(?:\d{4}[a-z]?|n\.d\.)'
+_CITATION_PAGES = (
+    r'(?:'
+    r'\s*:\s*\d+(?:-\d+)?'
+    r'|\s*,\s*pp?\.?\s*\d+(?:-\d+)?'
+    r'|\s*,\s*p\.?\s*\d+(?:-\d+)?'
+    r'|\s*,\s+\d+(?:-\d+)?'
+    r')?'
+)
+_CITATION_ETAL = r'et\.?\s*al\.?'
+_CITATION_SIGNAL = r'(?:see also|see|cf\.|e\.g\.|cited in|quoted in)'
+_CITATION_AUTH = (
+    r'[A-Za-z][A-Za-z\'\-]*'
+    r'(?:,\s*[A-Z]\.?|\s+[A-Z]\.?)?'
+    r'(?:'
+    rf'\s+(?:and|&)\s+[A-Za-z][A-Za-z\'\-]*(?:,\s*[A-Z]\.?|\s+[A-Z]\.?)?'
+    rf'|\s+{_CITATION_ETAL}'
+    r')?'
+)
+_CITATION_EDITOR = r'\((?:eds?\.?|editor(?:s)?)\)'
+
+
 def clean_citations(text):
     """
-        Replaces any citations whether intext to [[CITATION]]
+    Replaces in-text and parenthetical citations with [[CITATION]].
+    Covers Harvard/APA/Chicago author-date, MLA author-page, numeric refs,
+    edited-volume/secondary forms, and numbered Vol/Volume markers.
     """
     if not isinstance(text, str):
         return text
 
-    # Bracketed numeric citations: [1], [12], [1,2]
-    text = re.sub(r'\[\d+(,\s*\d+)*\]', ' [[CITATION]] ', text)
+    year = _CITATION_YEAR
+    pages = _CITATION_PAGES
+    etal = _CITATION_ETAL
+    signal = _CITATION_SIGNAL
+    auth = _CITATION_AUTH
+    editor = _CITATION_EDITOR
 
-    # Parenthetical citations: (Smith, 2020), (Smith et al., 2020), (Smith & Jones, 2020),
-    # (Smith, 2020; Lee, 2019), (Smith 2020) — comma optional, semicolon-joined multiples
+    # 1. Bracketed numeric citations: [1], [1, 2], [1-3], [1–3]
+    text = re.sub(r'\[\d+(?:,\s*\d+)*\]', ' [[CITATION]] ', text)
+    text = re.sub(r'\[\d+\s*[\-–]\s*\d+\]', ' [[CITATION]] ', text)
+
+    # 2. Parenthetical author-date, including multi-cite and signals
+    paren_unit = (
+        rf'(?:{signal}\s+)?'
+        rf'{auth}'
+        rf'\s*,?\s*{year}'
+        rf'{pages}?'
+        rf'(?:\s*,\s*(?:cited in|quoted in)\s+{auth}\s*,?\s*{year}{pages}?)?'
+    )
     text = re.sub(
-        r'\([A-Z][a-zA-Z\.\s,&]*?(?:et al\.)?\s*,?\s*\d{4}[a-z]?(?:\s*;\s*[A-Z][a-zA-Z\.\s,&]*?\d{4}[a-z]?)*\)',
-        ' [[CITATION]] ', text
+        rf'\({paren_unit}(?:\s*;\s*(?:{signal}\s+)?{auth}\s*,?\s*{year}{pages}?)*\)',
+        ' [[CITATION]] ',
+        text,
     )
 
-    # Narrative citations: "Smith (2020)", "Smith et al. (2020)"
-    text = re.sub(r'\b[A-Z][a-zA-Z]+(?:\set al\.)?\s\(\d{4}[a-z]?\)', ' [[CITATION]] ', text)
+    # 3. Edited-volume / secondary: Jones C & Baker G in Lewis J (ed) 1994
+    text = re.sub(
+        rf'\b[A-Za-z][A-Za-z\'\-]*\s+[A-Z]\.?'
+        rf'(?:\s*&\s*[A-Za-z][A-Za-z\'\-]*\s+[A-Z]\.?)'
+        rf'\s+in\s+[A-Za-z][A-Za-z\'\-]*(?:\s+[A-Z]\.?)?\s*{editor}\s*{year}',
+        ' [[CITATION]] ',
+        text,
+    )
+
+    # 4. Narrative author-date: Smith (2020), Smith and Jones (2020), Smith et al (2000)
+    text = re.sub(
+        rf'\b[A-Za-z][A-Za-z\'\-]+'
+        rf'(?:\s+(?:and|&)\s+[A-Za-z][A-Za-z\'\-]+|\s+{etal})?'
+        rf'\s*\(\s*{year}{pages}?\s*\)',
+        ' [[CITATION]] ',
+        text,
+    )
+
+    # 5. Inverted author form: Green, E. et al (2000), Pilkingtonm, H. (2007)
+    text = re.sub(
+        rf'\b[A-Za-z][A-Za-z\'\-]+,\s*[A-Z]\.?(?:\s+{etal})?\s*\(\s*{year}{pages}?\s*\)',
+        ' [[CITATION]] ',
+        text,
+    )
+
+    # 6. Conservative MLA author-page: (Nietzsche 9) — skip figure/table labels
+    mla_skip = (
+        r'Figure|Table|Chapter|Appendix|Equation|Model|Group|Section|Part|'
+        r'Step|Stage|Type|Sample|Experiment|Study'
+    )
+    text = re.sub(
+        rf'\((?!{mla_skip}\b)[A-Z][a-zA-Z\'\-]+\s+\d+(?:-\d+)?\)',
+        ' [[CITATION]] ',
+        text,
+    )
+
+    # 7. Numbered volume markers: Vol 1, Vol. 2, Volume 2, volume 2 (not "volume of")
+    text = re.sub(
+        r'(?<![\w-])(?:Vol\.?s?\.?|Volume|volume)\s+(?!of\s)\d+'
+        r'(?:\s*[\-–]\s*\d+)?(?:\s*,\s*no\.\s*\d+)?\.?',
+        ' [[CITATION]] ',
+        text,
+    )
 
     text = re.sub(r'(\[\[CITATION\]\]\s*){2,}', '[[CITATION]] ', text)
     text = re.sub(r'\s+', ' ', text).strip()
 
     return text
+
 
 def clean_url(text):
     """

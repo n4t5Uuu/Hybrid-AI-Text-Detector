@@ -22,7 +22,7 @@ Always call `clean_pipeline()`. Do not rearrange its order. Do not put new clean
 |-----|----------|
 | `[[EQUATION]]` | Math, LaTeX, Greek, trig, physics formulas, algebraic fragments |
 | `[[CODE]]` | Fenced/inline code, pseudocode, assignments, return expressions |
-| `[[CITATION]]` | `(Smith, 2020)`, `[1]`, `Smith et al. (2020)` |
+| `[[CITATION]]` | `(Smith, 2020)`, `[1-3]`, `Smith et al (2000)`, `(pederson, 2002: 303)`, `Vol 1` |
 | `[[COMPLEXITY]]` | `O(n)`, `Θ(n)`, `Ω(n²)` |
 | `[[URL]]` | `https://...`, `www....` |
 | `[[MUSIC]]` | Chord progressions like `C-G-D-A` |

@@ -51,7 +51,7 @@ Cleans: `[Start] -> [End]`, `[Car] |-- [Dashboard]`, `class Foo {}`, `object.met
 Cleans: `O(n)`, `O(log n)`, `Θ(n)`, `Ω(n²)`
 
 ### `clean_citations(text)` → `[[CITATION]]`
-Cleans: `(Smith, 2020)`, `[1]`, `Smith et al. (2020)`
+Cleans numeric refs (`[1]`, `[1-3]`), parenthetical author-date (`(Smith, 2020)`, `(pederson, 2002: 303; see also Hargeaves, 1994)`, `(Smith & Jones, 2020)`, `(Jones, 1990, cited in Smith, 2000)`), narrative/inverted forms (`Smith et al (2000)`, `Green, E. et al (2000)`, `Pilkingtonm, H. (2007)`), edited-volume secondary (`Jones C & Baker G in Lewis J (ed) 1994`), conservative MLA author-page (`(Nietzsche 9)`), and numbered volume markers (`Vol 1`, `Volume 2`, `vol. 12, no. 3`). Skips `(Figure 1)`, `(Table 2)`, `(see below)`, and prose like `volume of water`.
 
 ### `clean_url(text)` → `[[URL]]`
 Cleans: `https://...`, `www....`
@@ -176,7 +176,7 @@ df = clean_mgtbench_ai_dataset(mgtbench_ai_path, PROCESSED_AI_DIR, sample_size=N
 |-----|------------------|
 | `[[EQUATION]]` | Math, LaTeX, Greek symbols |
 | `[[CODE]]` | Code blocks, function calls |
-| `[[CITATION]]` | (Smith, 2020), [1] |
+| `[[CITATION]]` | `(Smith, 2020)`, `[1-3]`, `Smith et al (2000)`, `(pederson, 2002: 303)`, `Vol 1` |
 | `[[COMPLEXITY]]` | O(n), Θ(n) |
 | `[[URL]]` | Links |
 | `[[MUSIC]]` | C-G-D-A chords |
