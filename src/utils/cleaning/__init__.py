@@ -28,9 +28,12 @@ from .cleaning_methods import (
 )
 from .placeholder_density import placeholder_density, placeholder_density_windowed
 from .dataset_cleaning import (
+    clean_bawe_dataset,
     clean_claude_dataset,
     clean_mgtbench_ai_dataset,
     extract_claude_prompt_and_response,
+    ingest_bawe_dataset,
+    parse_bawe_xml,
 )
 
 __all__ = [
@@ -61,6 +64,9 @@ __all__ = [
     "is_non_prose",
     "clean_pipeline",
     "extract_claude_prompt_and_response",
+    "parse_bawe_xml",
+    "ingest_bawe_dataset",
     "clean_claude_dataset",
     "clean_mgtbench_ai_dataset",
+    "clean_bawe_dataset",
 ]
