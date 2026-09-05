@@ -587,6 +587,30 @@ def clean_citations(text):
         text,
     )
 
+    # 8. Strip leftover page markers BAWE often leaves after cites: p.139, pp.200, p135, 2000: 572
+    page_num = r'\d+(?:/\d+)?(?:\s*-\s*\d+)?'
+    page_ref = rf'pp?\.?\s*{page_num}(?:\*+)?'
+
+    text = re.sub(rf'[,;]\s*{page_ref}\.?(?=\s|[,;\)\]\.*]|$)', ' ', text)
+    text = re.sub(rf'\.\s*{page_ref}\.?(?=\s|[,;\)\]\.*]|$)', ' ', text)
+    text = re.sub(rf'(?<![A-Za-z0-9]){page_ref}\.?(?=\s|[,;\)\]\.*]|$)', ' ', text)
+    # Uppercase bibliography pages: P.230/1, Pp.70 (require dot; glued P21 after cite tags)
+    text = re.sub(
+        rf'(?<![A-Za-z])Pp?\.\s*{page_num}(?:\*+)?\.?(?=\s|[,;\)\]\.*]|$)',
+        ' ',
+        text,
+    )
+    text = re.sub(
+        rf'(?<![A-Za-z])P\d{{1,3}}(?:/\d+|-\d{{1,3}})?(?:\*+)?\.?(?=\s|[,;\)\]\.*]|$)',
+        ' ',
+        text,
+    )
+    text = re.sub(
+        rf'\b(\d{{4}}[a-z]?)\s*:\s*{page_num}\.?(?=\s|[,;\)\]\.]|$)',
+        r'\1',
+        text,
+    )
+
     text = re.sub(r'(\[\[CITATION\]\]\s*){2,}', '[[CITATION]] ', text)
     text = re.sub(r'\s+', ' ', text).strip()
 

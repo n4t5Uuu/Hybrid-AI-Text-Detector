@@ -52,7 +52,7 @@ What the pipeline already handles, plus leftovers still seen in `claude_dataset_
 ### Other tags
 
 - Complexity: `O(n)`, `O(log n)`, `Θ(...)`, `Ω(...)` (not lowercase `o`, not `info(x)`)
-- Citations: `[1]`, `[1-3]`, `(Smith, 2020)`, `(Smith & Jones, 2020)`, `(pederson, 2002: 303; see also Hargeaves, 1994)`, `Smith et al (2000)`, `Green, E. et al (2000)`, `Jones C & Baker G in Lewis J (ed) 1994`, `(Nietzsche 9)`, `Vol 1`, `Volume 2`
+- Citations: `[1]`, `[1-3]`, `(Smith, 2020)`, `(Smith & Jones, 2020)`, `(pederson, 2002: 303; see also Hargeaves, 1994)`, `Smith et al (2000)`, `Green, E. et al (2000)`, `Jones C & Baker G in Lewis J (ed) 1994`, `(Nietzsche 9)`, `Vol 1`, `Volume 2`; strips leftover pages (`p.139`, `pp.200`, `p135`, `2000: 572`)
 - URLs: `http(s)://`, `www.`
 - Music: `C-G-D-A`, `F#-Bb-D`
 - List markers: `1.`, `a)` / `b.` only after start, newline, or `: ` (not after `a + b. Step`)
