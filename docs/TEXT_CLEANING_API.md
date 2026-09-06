@@ -71,7 +71,7 @@ Example: `[[EQUATION]] + [[EQUATION]]` → `[[EQUATION]]`
 Example: `[[CODE]] returns [[CODE]]` → `[[CODE]]`
 
 ### `mop_up_leftover_math_and_code(text)`
-Last-pass fold for leftovers next to tags: trig, `dΦ/dt`, both sides of `=`, `±`, `2a`/`4ac`/`x + c`, named quantities (`Mass (m) = 1,500 kg`), `(xn, yn, zn)`, unit products, `[[CODE]] [[EQUATION]] [[CODE]]` sandwiches
+Last-pass fold for leftovers next to tags: trig, `dΦ/dt`, both sides of `=`, `±`, `2a`/`4ac`/`x + c`, named quantities (`Mass (m) = 1,500 kg`), `(xn, yn, zn)`, unit products, `[[CODE]] [[EQUATION]] [[CODE]]` sandwiches, leftover LaTeX shells (`$h([[CODE]])$`, `$h([[CODE]] _Z)$`, `∠ABC`, `+ bx + c`, `{d+c}`, stacked `^_{j}`, `U_i`, `$(2IJS)$`), plus common paper families (`\frac`, `\sqrt`, `\left/\right`, environments, `\label/\eqref`, kets/bras). Array reads `dp[i][j]` are handled earlier in `clean_pseudocode_and_diagrams`. Underscores whose middle is not a word/name (`_Z`, `S_{1}`) become `[[EQUATION]]`; italic titles (`_Pamela_`, `_this_`) stay. Currency `$25,000` stays.
 
 ### `clean_code_assignments(text)`
 Code-only numeric assignments like `num = -1, condition false` next to `[[CODE]]` or Iteration/condition keywords
@@ -160,7 +160,7 @@ Full pipeline for MGTBench AI (`id`, `text`, `file`) — mirrors `clean_claude_d
 2. Filters foreign language on raw text (optional)
 3. Runs `clean_pipeline()` on each row
 4. Drops empty rows and rows failing `placeholder_density()` / `placeholder_density_windowed()`
-5. Saves `mgtbench_ai_dataset_cleaned.csv` with summary stats (uses `[[EQUATION]]` tags like Claude)
+5. Saves one combined `mgtbench_ai_dataset_cleaned.csv` (or `mgtbench_ai_dataset_cleaned_{N}.csv` when `sample_size=N`) with columns `id`, `text`, `file`, and `subject` (derived from `file`). Per-subject `*_mgtbench.csv` files are not written.
 
 Use in notebook:
 ```python

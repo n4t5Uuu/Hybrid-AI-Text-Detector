@@ -182,9 +182,9 @@ def clean_mgtbench_ai_dataset(
 ):
     """
     Cleans the MGTBench AI CSV (id, text, file), filters foreign-language rows,
-    runs clean_pipeline on each row, filters by placeholder
-    density, saves one CSV per subject to processed_dir, and returns the
-    cleaned DataFrame. sample_size is applied per subject.
+    runs clean_pipeline on each row, filters by placeholder density, saves one
+    combined CSV to processed_dir, and returns the cleaned DataFrame.
+    sample_size is applied per subject.
     """
     mgtbench_csv_path = Path(mgtbench_csv_path)
     processed_dir = Path(processed_dir)
@@ -293,11 +293,18 @@ def clean_mgtbench_ai_dataset(
     for old in processed_dir.glob('mgtbench_ai_dataset_cleaned*.csv'):
         old.unlink()
         print(f"Removed old combined file: {old.name}")
+    for old in processed_dir.glob('*_mgtbench.csv'):
+        old.unlink()
+        print(f"Removed old per-subject file: {old.name}")
 
-    for subject, group in df_processed.groupby('subject', sort=False):
-        output_path = processed_dir / f"{str(subject).lower()}_mgtbench.csv"
-        group.to_csv(output_path, index=False)
-        print(f"Saved {len(group)} rows -> {output_path.resolve()}")
+    filename = (
+        f"mgtbench_ai_dataset_cleaned_{sample_size}.csv"
+        if sample_size
+        else "mgtbench_ai_dataset_cleaned.csv"
+    )
+    output_path = processed_dir / filename
+    df_processed.to_csv(output_path, index=False)
+    print(f"\nSuccessfully saved cleaned dataset ({len(df_processed)} rows) to:\n  {output_path.resolve()}")
 
     print("\n--- SAMPLE CLEANED DATA (FIRST 10 ROWS) ---")
     ipd.display(df_processed.head(10))

@@ -68,23 +68,29 @@ def clean_math_texts(text):
     text = re.sub(r'\\\[.*?\\\]', ' [[EQUATION]] ', text, flags=re.DOTALL)
 
     # LaTeX inline math — require real math so $perseverance$ / $0.3 trillion ... $19.5
-    # currency spans are not treated as equations.
+    # currency spans are not treated as equations. Tag names (CODE, EQUATION)
+    # must not count as English words — $h( [[CODE]] )$ is still math.
     def _inline_math_replacer(m):
         inner = m.group(1).strip()
         if not inner:
             return m.group(0)
         if re.search(r'\.\s+[A-Z]', inner) or re.search(r'\.\n', inner):
             return m.group(0)
-        words = re.findall(r'[A-Za-z]{3,}', inner)
+        has_tag = bool(re.search(r'\[\[(?:EQUATION|CODE|CITATION)\]\]', inner))
+        stripped = re.sub(r'\[\[(?:EQUATION|CODE|CITATION)\]\]', ' ', inner)
+        words = re.findall(r'[A-Za-z]{3,}', stripped)
         if len(words) >= 3:
             return m.group(0)
         # Currency/prose between two $: "$0.3 trillion in 1970 to $19.5"
-        long_words = re.findall(r'[A-Za-z]{4,}', inner)
-        if long_words and (' ' in inner) and '\\' not in inner:
+        long_words = re.findall(r'[A-Za-z]{4,}', stripped)
+        if long_words and (' ' in stripped) and '\\' not in inner and not has_tag:
             return m.group(0)
-        has_math = bool(re.search(rf"[\\^_+\-*/=<>']|[0-9]|[{GREEK_CHARS}]", inner))
-        is_short_id = bool(re.fullmatch(r'[A-Za-z]{1,2}', inner))
-        if has_math or is_short_id:
+        has_math = bool(
+            re.search(rf"[\\^_+\-*/=<>'{{}}()]|[0-9]|[{GREEK_CHARS}]", inner)
+        ) or has_tag
+        is_short_id = bool(re.fullmatch(r'[A-Za-z]{1,4}', stripped.strip()))
+        is_fn_call = bool(re.search(r'\b[A-Za-z]{1,6}\s*\([^)]{0,60}\)', inner))
+        if has_math or is_short_id or is_fn_call:
             return ' [[EQUATION]] '
         return m.group(0)
 
@@ -123,6 +129,15 @@ def clean_math_texts(text):
     # Exponents and derivatives — no bare parens in the token class (see
     # docstring above for why)
     text = re.sub(r'\b[a-zA-Z0-9]+\^[a-zA-Z0-9\+\-]+\b', ' [[EQUATION]] ', text)
+    text = re.sub(r'(?<![A-Za-z])\^\{[^{}]{0,40}\}', ' [[EQUATION]] ', text)
+    text = re.sub(
+        r"(?<![A-Za-z])[A-Za-z]'?\^[A-Za-z0-9+\-]{1,8}(?![A-Za-z])",
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        r"(?<![A-Za-z])[A-Za-z]'?\^(?![\w{])",
+        ' [[EQUATION]] ', text
+    )
     text = re.sub(
         rf'(?<![A-Za-z])d[{GREEK_CHARS}A-Za-z][A-Za-z0-9]*/d[A-Za-z]\b',
         ' [[EQUATION]] ', text
@@ -333,6 +348,34 @@ def clean_residual_math_noise(text):
         ' [[EQUATION]] ', text
     )
 
+    # Geometry: angle symbols and degrees (not English "angle")
+    text = re.sub(r'∠\s*\[\[EQUATION\]\](?:\s*°)?', ' [[EQUATION]] ', text)
+    text = re.sub(r'∠[A-Z]{1,3}(?:\s*°)?', ' [[EQUATION]] ', text)
+    text = re.sub(r'△[A-Z]{1,3}\b', ' [[EQUATION]] ', text)
+    text = re.sub(r'(?<![A-Za-z])\d{1,3}°(?![A-Za-z])', ' [[EQUATION]] ', text)
+    text = re.sub(r'(?<![A-Za-z])[A-Za-z]°(?![A-Za-z])', ' [[EQUATION]] ', text)
+
+    # Indexed identifiers: U_i, A_s, theta_i (underscore subscript, not italic _word_)
+    text = re.sub(
+        r'(?<![A-Za-z_])[A-Za-z]{1,8}_[A-Za-z0-9]{1,6}(?![A-Za-z])',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        r'(?<![A-Za-z_])[A-Za-z](?:_[A-Za-z0-9]{1,4})?\s*\([^)]{0,60}\)',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(r'\bH_\d\s*\([^)]{0,120}\)', ' [[EQUATION]] ', text)
+
+    # Caret glued to tags
+    text = re.sub(
+        r'\[\[EQUATION\]\]\s*\^\s*\{[^{}]{0,40}\}(?:\)\^?\d*)?',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        r'(?<![A-Za-z])[A-Za-z]\s*\^\s*\[\[EQUATION\]\]',
+        ' [[EQUATION]] ', text
+    )
+
     # Consolidate and clean whitespace
     text = re.sub(r'(\[\[EQUATION\]\]\s*){2,}', '[[EQUATION]] ', text)
     text = re.sub(r'\s+', ' ', text).strip()
@@ -362,6 +405,32 @@ def clean_pseudocode_and_diagrams(text):
     """
     if not isinstance(text, str):
         return text
+
+    # Array indexing (dp[i][j], S[i...j]) — before citations match [0]
+    _arr_atom = r'[A-Za-z0-9+\-\.]{1,12}'
+    for _ in range(2):
+        text = re.sub(
+            rf'\b[A-Za-z][A-Za-z0-9_]*\s*\[\s*{_arr_atom}(?:\s*\.\.\.\s*{_arr_atom})?\s*\]'
+            rf'(?:\s*\[\s*{_arr_atom}\s*\])*',
+            ' [[CODE]] ', text
+        )
+        text = re.sub(
+            rf'\b[A-Za-z]\s*\[\s*{_arr_atom}\s*\]\s*(?:==|!=|<=|>=)\s*'
+            rf'[A-Za-z]\s*\[\s*{_arr_atom}\s*\]',
+            ' [[CODE]] ', text
+        )
+        text = re.sub(
+            rf'\b[A-Za-z][A-Za-z0-9_]*\s*\[\s*{_arr_atom}\s*\]\s*\[\s*{_arr_atom}\s*\]\s*=\s*'
+            rf'(?:max\s+)?(?:\[\[EQUATION\]\]|\[\[CODE\]\]|[A-Za-z0-9+\-\. ]{{1,30}})',
+            ' [[CODE]] ', text
+        )
+
+    # [Diagram: ...] captions and ASCII triangle art
+    text = re.sub(r'\[Diagram:[^\]]{10,200}\]', ' [[CODE]] ', text)
+    text = re.sub(
+        r'Diagram:\s*[A-Za-z](?:\s*[/\\\-]){2,}[A-Za-z0-9°\s\-]+',
+        ' [[CODE]] ', text
+    )
 
     # [Dashboard] [[EQUATION]] -- Fuel Gauge (diagram node split by a math tag)
     text = re.sub(
@@ -869,6 +938,7 @@ def mop_up_leftover_math_and_code(text):
         text = re.sub(rf'{CODE}\s*{EQ}\s*{CODE}', ' [[CODE]] ', text)
 
     TAG = rf'(?:{EQ}|{CODE})'
+    ANY_TAG = rf'(?:{EQ}|{CODE}|\[\[CITATION\]\]|\[\[COMPLEXITY\]\])'
 
     # Physics leftovers next to tags: e^{...}, _{tag}, stray $
     text = re.sub(rf'\be\s*\^\s*\{{?\s*-?\s*{EQ}\s*\}}?', ' [[EQUATION]] ', text)
@@ -879,17 +949,17 @@ def mop_up_leftover_math_and_code(text):
     text = re.sub(rf'\{{(?:\\?rm\s+)?[A-Za-z]{{1,8}}\}}\s*{EQ}', ' [[EQUATION]] ', text)
     text = re.sub(rf'{EQ}\s*%\s*{EQ}(?:\s*%)?', ' [[EQUATION]] ', text)
     text = re.sub(rf'\$[A-Za-z]{{1,4}}\s*[_^]?\s*\{{?\s*{EQ}', ' [[EQUATION]] ', text)
-    text = re.sub(rf'\$\s*(?={TAG})', '', text)
+    text = re.sub(rf'\$\s*(?={ANY_TAG})', '', text)
     text = re.sub(rf'{EQ}\s*\$\s*{EQ}', ' [[EQUATION]] ', text)
-    text = re.sub(rf'{TAG}\s*\$', ' [[EQUATION]] ', text)
+    text = re.sub(rf'{ANY_TAG}\s*\$', ' [[EQUATION]] ', text)
     text = re.sub(r'\\u[0-9a-fA-F]{4}', ' ', text)
     text = re.sub(rf'\\\s+u[c]?(?:\{{[^}}]*\}})*\s*(?:{TAG})?', ' [[EQUATION]] ', text)
 
     # Dollar-wrapped tag clusters (subscripts, superscripts, nested tags)
     for _ in range(5):
         text = re.sub(
-            rf'\$\s*(?:{TAG}(?:\s*[_^]\s*(?:\{{\s*{TAG}\s*\}}|[A-Za-z0-9]+))?'
-            rf'(?:\s*\+\s*{TAG}(?:\s*[_^]\s*(?:\{{\s*{TAG}\s*\}}|[A-Za-z0-9]+))?)*)\s*\$',
+            rf'\$\s*(?:{ANY_TAG}(?:\s*[_^]\s*(?:\{{\s*{ANY_TAG}\s*\}}|[A-Za-z0-9]+))?'
+            rf'(?:\s*\+\s*{ANY_TAG}(?:\s*[_^]\s*(?:\{{\s*{ANY_TAG}\s*\}}|[A-Za-z0-9]+))?)*)\s*\$',
             ' [[EQUATION]] ', text
         )
         text = re.sub(rf'\$\s*{CODE}\s*\^\s*[0-9]+\s*\$', ' [[EQUATION]] ', text)
@@ -900,8 +970,45 @@ def mop_up_leftover_math_and_code(text):
         text = re.sub(rf'\$\s*{TAG}\s*\^\s*[0-9]+\s*\$', ' [[EQUATION]] ', text)
         text = re.sub(rf'\$\s*\d+\s*\^\s*\{{\s*{TAG}\s*\}}\s*\$', ' [[EQUATION]] ', text)
 
+        # $h( TAG )$ and $h( TAG ) = h( TAG )$
+        text = re.sub(
+            rf'\$\s*[A-Za-z]{{1,6}}\s*\(\s*{TAG}\s*\)'
+            rf'(?:\s*=\s*[A-Za-z]{{1,6}}\s*\(\s*{TAG}\s*\))?\s*\$',
+            ' [[EQUATION]] ', text
+        )
+        # Remaining $...$ that still hold tags or latex punctuation
+        def _dollar_debris(m):
+            inner = m.group(1)
+            if not re.search(r'\[\[(?:EQUATION|CODE|CITATION)\]\]|[\\{}^_]', inner):
+                return m.group(0)
+            stripped = re.sub(r'\[\[(?:EQUATION|CODE|CITATION)\]\]', ' ', inner)
+            if len(re.findall(r'[A-Za-z]{3,}', stripped)) >= 3:
+                return m.group(0)
+            return ' [[EQUATION]] '
+        text = re.sub(r'\$([^$\n]{1,200})\$', _dollar_debris, text)
+
+        # Set / brace shells around tags: $\{ S_{1}^{TAG}, ... \}$
+        text = re.sub(
+            rf'\\?\{{[^{{}}]{{0,8}}{TAG}[^{{}}]{{0,80}}\\?\}}\$?',
+            ' [[EQUATION]] ', text
+        )
+        # TAG ^{s}_{ TAG , TAG }$
+        text = re.sub(
+            rf'{TAG}\s*\^\s*\{{?\s*[A-Za-z]\s*\}}?\s*_\s*\{{[^{{}}]{{0,80}}\}}\$?',
+            ' [[EQUATION]] ', text
+        )
+        # | TAG _2|  and  70^ TAG
+        text = re.sub(rf'\|\s*{TAG}\s*_\s*\d+\s*\|?', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\b\d+\s*\^\s*{TAG}', ' [[EQUATION]] ', text)
+        # Comma between tags only inside leftover latex (next to _ ^ {{ $)
+        text = re.sub(
+            rf'(?<=[_^{{$,])\s*{TAG}\s*,\s*{TAG}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'{TAG}\s*,\s*{TAG}(?=\s*[_^{{}}\\$,])', ' [[EQUATION]] ', text)
+
     # Dollars wrapping tags or partial LaTeX: $ [[EQUATION]] $, $^ [[CODE]] $, $R_ [[CODE]] $
-    text = re.sub(rf'\$\s*{TAG}\s*\$', ' [[EQUATION]] ', text)
+    text = re.sub(rf'\$\s*{ANY_TAG}\s*\$', ' [[EQUATION]] ', text)
     text = re.sub(rf'\$\^\s*{CODE}\s*\$', ' [[EQUATION]] ', text)
     text = re.sub(rf'\$[A-Za-z]_\s*{CODE}\s*\$', ' [[EQUATION]] ', text)
     text = re.sub(rf'\$[A-Za-z]\s*{EQ}\s*\$', ' [[EQUATION]] ', text)
@@ -909,11 +1016,372 @@ def mop_up_leftover_math_and_code(text):
     text = re.sub(rf'\$\s*\^\s*{CODE}\s*\$', ' [[EQUATION]] ', text)
     text = re.sub(rf'km\\,s\$\^\s*{CODE}\s*\$', ' [[EQUATION]] ', text)
 
+    # $X_y(z)=w  short identifiers only
+    text = re.sub(
+        r'\$[A-Za-z](?:_[A-Za-z0-9]{1,4})?\s*\(\s*[A-Za-z]\s*\)\s*=\s*[A-Za-z0-9]{1,4}',
+        ' [[EQUATION]] ', text
+    )
+
+    # Underscore leftovers whose middle is not a word or name.
+    # Keep italic titles: _Pamela_, _this_ (3+ letters between underscores).
+    # _{...} is always latex. _Z / _2 / TAG _v are subscripts.
+    text = re.sub(rf'{TAG}\s*_\s*\{{[^{{}}]{{0,40}}\}}\$?', ' [[EQUATION]] ', text)
+    text = re.sub(r'\b[A-Za-z]{1,3}_\s*\{[^{}]{0,40}\}\$?', ' [[EQUATION]] ', text)
+    text = re.sub(
+        rf'{TAG}\s*\^\s*\{{?\s*[A-Za-z]\s*\}}?\s*_',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(r'\^\s*\{[A-Za-z]\}\s*_', ' [[EQUATION]] ', text)
+    text = re.sub(r'\^[A-Za-z]\s*_', ' [[EQUATION]] ', text)
+    text = re.sub(
+        rf'\^\s*\{{[A-Za-z]\}}\s*_\s*\{{[^{{}}]{{0,80}}\}}\$?',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(r'_\s*\{[^{}]{0,40}\}\$?', ' [[EQUATION]] ', text)
+    text = re.sub(
+        rf'{TAG}\s*_\s*(?:[A-Za-z]{{1,2}}|\d+)(?![A-Za-z])\$?',
+        ' [[EQUATION]] ', text
+    )
+    text = re.sub(
+        r'(?<![A-Za-z])_\s*(?:[A-Za-z]{1,2}|\d+)(?![A-Za-z])\$?',
+        ' [[EQUATION]] ', text
+    )
+
+    # Trailing {$  }$  after tags
+    text = re.sub(rf'{TAG}\s*\\?\}}\s*\$?', ' [[EQUATION]] ', text)
+    text = re.sub(rf'\$\s*\\?\{{', ' [[EQUATION]] ', text)
+    text = re.sub(r'\\?\}\s*\$', ' [[EQUATION]] ', text)
+
+    # Short parenthetical math: Nbr(i), h(TAG) — not (see below) / (Figure 1)
+    text = re.sub(
+        rf'\b[A-Za-z]{{1,4}}\(\s*(?:{TAG}|[A-Za-z]\d?)\s*\)\$?',
+        ' [[EQUATION]] ', text
+    )
+
     # Stray LaTeX delimiters before tags: \ [[EQUATION]], ~\ref leftovers
     text = re.sub(rf'\$\s*\\+\s*(?={TAG})', '', text)
     text = re.sub(rf'\$\s*\\+\s*u_', ' [[EQUATION]] ', text)
     text = re.sub(rf'\\+\s*(?={TAG})', '', text)
-    text = re.sub(rf'~\s*(?={TAG})', '', text)
+
+    # Final leftover $ shells created after earlier folds
+    for _ in range(4):
+        text = re.sub(rf'\$\s*(?={ANY_TAG})', '', text)
+        text = re.sub(rf'{ANY_TAG}\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{TAG}\s*\^\s*[A-Za-z0-9]+\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{TAG}\s*,\s*[A-Za-z]{{1,2}}\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{TAG}\s+[A-Za-z]{{1,4}}_\d+\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(r'\$\d+(?:\.\d+)?\$', ' [[EQUATION]] ', text)
+        text = re.sub(
+            r'(?<![A-Za-z])[A-Za-z]{1,3}_[A-Za-z0-9]{1,3}\s*\$',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'{TAG}\s+\d+(?:\.\d+)?\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{TAG}\s*\)\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\)\s*\}}?\s*{TAG}\s*\)\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{TAG}\s*[A-Za-z]{{1,3}}\d*\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{TAG}\s*/\s*[A-Za-z]\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{TAG}\s*\([^)]{{0,12}}\)\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\$[A-Za-z]_\s*{TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\$[A-Za-z]\s*[:=]\s*{TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\$[A-Za-z](?:_[A-Za-z0-9]{{1,3}})?\s*{TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(
+            rf'\$\s*[A-Za-z]{{1,6}}\s*\(\s*{TAG}(?:\s*_\s*[A-Za-z0-9]{{1,2}})?\s*\)'
+            rf'(?:\s*=\s*[A-Za-z]{{1,6}}\s*\(\s*{TAG}\s*\))?\s*\$?',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(r'\$[A-Z]{2,5}\$', ' [[EQUATION]] ', text)
+        text = re.sub(r'\$[A-Za-z](?:_[A-Za-z0-9]{1,3})?\$', ' [[EQUATION]] ', text)
+        text = re.sub(r'\$[A-Za-z](?:\s*,\s*[A-Za-z]){1,4}\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{EQ}\s*=\s*{EQ}', ' [[EQUATION]] ', text)
+
+    # --- Seen CSV leftovers + common paper/converter families ---
+    for _ in range(4):
+        # B9–B15 first: intact or half-tagged LaTeX command families
+        text = re.sub(
+            rf'\\frac\s*\{{[^{{}}]*{ANY_TAG}[^{{}}]*\}}\s*\{{[^{{}}]*{ANY_TAG}[^{{}}]*\}}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\\frac\s*\{{[^{{}}]*{ANY_TAG}[^{{}}]*\}}\s*\{{[^{{}}]*\}}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\\frac\s*\{{[^{{}}]*\}}\s*\{{[^{{}}]*{ANY_TAG}[^{{}}]*\}}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\\sqrt(?:\[[^\]]*\])?\{{[^{{}}]*{ANY_TAG}[^{{}}]*\}}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\\(?:sum|prod|int|lim)(?:_\{{[^{{}}]*\}}|\[[^\]]*\])?(?:\^{{\s*[^{{}}]*\}})?\s*(?:{ANY_TAG})?',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\\(?:left|right|bigl?|bigr?|Bigl?|Bigr?)(?:\[|\(|\{{|\||\.)\s*'
+            rf'(?:{ANY_TAG}\s*)?\\(?:left|right|bigl?|bigr?|Bigl?|Bigr?)'
+            rf'(?:\]|\)|\}}|\||\.)',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\\(?:left|right)\s*(?:\[|\(|\{{|\|)\s*{ANY_TAG}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'\\(?:left|right)\b(?=\s*{ANY_TAG})', ' [[EQUATION]] ', text)
+        text = re.sub(
+            rf'\\begin\{{(?:align\*?|equation\*?|eqnarray\*?|gather\*?|pmatrix|bmatrix|cases)\}}'
+            rf'.*?{ANY_TAG}.*?\\end\{{[^}}]+\}}',
+            ' [[EQUATION]] ', text, flags=re.DOTALL
+        )
+        text = re.sub(
+            rf'\\begin\{{(?:align\*?|equation\*?|eqnarray\*?|gather\*?|pmatrix|bmatrix|cases)\}}\s*'
+            rf'{ANY_TAG}\s*&\s*{ANY_TAG}\s*\\\\',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\\begin\{{(?:align\*?|equation\*?|eqnarray\*?|gather\*?|pmatrix|bmatrix|cases)\}}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\\end\{{(?:align\*?|equation\*?|eqnarray\*?|gather\*?|pmatrix|bmatrix|cases)\}}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'\\(?:label|eqref|ref|tag)\{{[^{{}}]+\}}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\\(?:nonumber|notag)\b', ' [[EQUATION]] ', text)
+        text = re.sub(
+            rf'\\(?:ket|bra|braket|norm|abs)\{{[^{{}}]*{ANY_TAG}[^{{}}]*\}}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'\\(?:ket|bra|braket|norm|abs)\{{[^{{}}]+\}}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\\\(\s*{ANY_TAG}[^{{}}]*\\\)', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\\\[\s*{ANY_TAG}[^{{}}]*\\\]', ' [[EQUATION]] ', text, flags=re.DOTALL)
+        text = re.sub(
+            rf'\\(?:leq|geq|neq|equiv|approx|sim|in|notin|to|rightarrow|leftarrow|cdot|times|pm|mp)\b',
+            ' [[EQUATION]] ', text
+        )
+
+        # A1. Split backslash commands (\ oindent, \ abla) with optional brace/tag tails
+        text = re.sub(
+            rf'\\\s+[a-z]{{2,15}}(?:\s*(?:\\?\{{[^{{}}]{{0,80}}\}}|\(\s*{ANY_TAG}\s*\)|{ANY_TAG}))?',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'\\;\s*(?={ANY_TAG})', ' [[EQUATION]] ', text)
+        text = re.sub(r'\\[;!:]', ' ', text)
+
+        # A2. ~ figure/ref shells — not every ~
+        text = re.sub(rf'~\s*\\?\{{\s*{ANY_TAG}[^{{}}]{{0,40}}\}}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'~\s*(?={ANY_TAG})', '', text)
+
+        # A4. Function calls: $h(TAG _Z)$, $Nbr(i)$
+        text = re.sub(
+            rf'\$\s*[A-Za-z]{{1,6}}\s*\(\s*{ANY_TAG}(?:\s*_\s*[A-Za-z0-9]{{1,2}})?\s*\)'
+            rf'(?:\s*=\s*[A-Za-z]{{1,6}}\s*\(\s*{ANY_TAG}(?:\s*_\s*[A-Za-z0-9]{{1,2}})?\s*\))?\s*\$',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\$\s*[A-Za-z]{{1,4}}\(\s*[A-Za-z]\d?\s*\)\$',
+            ' [[EQUATION]] ', text
+        )
+
+        # A5. Powers / transpose / starred sets (1–2 chars per side)
+        text = re.sub(rf'{ANY_TAG}\s*\^\s*[TNo]\b', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*\^\s*[A-Za-z]\s*_', ' [[EQUATION]] ', text)
+        text = re.sub(
+            r'(?<![A-Za-z])[A-Za-z]\^[A-Za-z]_[+\-*](?![A-Za-z])',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            r'(?<![A-Za-z])[A-Za-z]_[A-Za-z]\^\*(?![A-Za-z])',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'{ANY_TAG}\s*\^\s*[A-Za-z0-9]{{1,2}}\s*\$', ' [[EQUATION]] ', text)
+
+        # A6. Trailing $ on short math (not currency)
+        text = re.sub(
+            r'(?<![A-Za-z$])[A-Za-z](?:_[A-Za-z0-9]{1,3})?\$',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(r'(?<![A-Za-z$])[A-Za-z]\[[A-Za-z0-9]\]\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*[A-Za-z]{{1,3}}\.\$', ' [[EQUATION]] ', text)
+        text = re.sub(r'\]\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(r'(?<![A-Za-z$])\d+(?:\.\d+)?\$', ' [[EQUATION]] ', text)
+
+        # A7. $ident= / $ident: into a tag
+        text = re.sub(
+            rf'\$[A-Za-z](?:_[A-Za-z0-9]{{1,3}})?\s*[:=]\s*{ANY_TAG}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'\$[A-Za-z](?:_[A-Za-z0-9]{{1,3}})?\s*=\s*[A-Za-z](?:_[A-Za-z0-9]{{1,3}})?\s*=\s*{ANY_TAG}',
+            ' [[EQUATION]] ', text
+        )
+
+        # A8. Half-open display math and extra close parens
+        text = re.sub(
+            rf'\$[A-Za-z]\^{{[^{{}}]*{ANY_TAG}[^{{}}]*',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'\)\s*\)\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\)\s*\}}\s*\$', ' [[EQUATION]] ', text)
+
+        # A3. Brace / set / label debris next to tags (after command families)
+        text = re.sub(
+            rf'=\s*\\?\{{\s*{ANY_TAG}(?:\s*,\s*{ANY_TAG})*\s*\\?\}}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'\\?\}}\s*\\?\{{\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(
+            rf'\\?\{{[^{{}}]{{0,8}}{ANY_TAG}[^{{}}]{{0,80}}\\?\}}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            r'(?<!\{)(?<![A-Za-z])[a-zA-Z][a-zA-Z0-9_-]*:[a-zA-Z][a-zA-Z0-9_-]*\}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'(?<![A-Za-z])\{{\s*{ANY_TAG}\s*\\?\}}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*\\?\}}', ' [[EQUATION]] ', text)
+
+        # Orphan command names left after brace folds
+        text = re.sub(
+            rf'\\(?:frac|sqrt|ket|bra|braket|norm|abs|begin|end|label|eqref|ref|tag)\b',
+            ' [[EQUATION]] ', text
+        )
+
+        # Re-run dollar/tag shells exposed by the folds above
+        text = re.sub(rf'\$\s*(?={ANY_TAG})', '', text)
+        text = re.sub(rf'{ANY_TAG}\s*\$', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{TAG}\s*\^\s*[A-Za-z0-9]+\s*\$', ' [[EQUATION]] ', text)
+
+    # --- Claude + MGTBench: algebra tails, braces, carets, economy/physics ---
+    for _ in range(4):
+        # Geometry next to tags
+        text = re.sub(rf'∠\s*{ANY_TAG}(?:\s*°)?', ' [[EQUATION]] ', text)
+
+        # Algebra tails around tags
+        text = re.sub(
+            rf'{ANY_TAG}\s*\+\s*[A-Za-z]{{1,2}}x\s*\+\s*(?:{ANY_TAG}|[A-Za-z]{{1,2}}x)',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf'{ANY_TAG}\s*\+\s*[A-Za-z]{{1,2}}x\s*\+', ' [[EQUATION]] ', text)
+        text = re.sub(r'/\s*\(\s*2[abcxyz]\s*\)', ' [[EQUATION]] ', text)
+        text = re.sub(r'1\s*/\s*\(\s*2[abcxyz]\s*\)', ' [[EQUATION]] ', text)
+        text = re.sub(r'/\s*\(\s*2\s*\(\s*\d+\s*\)\s*\)', ' [[EQUATION]] ', text)
+        text = re.sub(rf'[A-Za-z]\d?\s*=\s*\(\s*-\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'[A-Za-z]\d?\s*=\s*\(\s*[0-9]+\s*±\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'[A-Za-z]\d?\s*=\s*\[\s*-\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'[A-Za-z]\d?\s*=\s*\[\s*[0-9]+\s*±\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(r'\(\s*\d+\s*\)\s*\(\s*[A-Za-z]\s*\)', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\[\s*-\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\[\s*[A-Za-z]\s*\\pm\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*\)\s*\)+', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*\)\s*(?=[.,;:!?\s]|$)', ' [[EQUATION]] ', text)
+
+        # Primes (not possessives)
+        text = re.sub(
+            r"(?<![A-Za-z])[A-Za-z]'(?:\^2|²)?(?![a-zA-Z])",
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(rf"{ANY_TAG}\s*'\^2", ' [[EQUATION]] ', text)
+
+        # Underscore subscripts next to = or tag
+        text = re.sub(rf'[A-Za-z]_\d+(?=\s*[,)]|\s*{ANY_TAG}|\s*=)', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\(\s*\d+\s*\)', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\d+\s*{ANY_TAG}\s*\+\s*[0-9]+[A-Za-z]+', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*\+\s*[0-9]+[A-Za-z]+', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*\+\s*[0-9]+[A-Za-z]\s*\+\s*\d+', ' [[EQUATION]] ', text)
+
+        # Coordinate / numeric tuples (not prose)
+        text = re.sub(r'\([A-Za-z]_\d,\s*[A-Za-z]_\d\)', ' [[EQUATION]] ', text)
+        text = re.sub(r'\(\d,\s*\d(?:,\s*\d)?\)', ' [[EQUATION]] ', text)
+        text = re.sub(r'\([A-Za-z],\s*\d\)', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\(\s*{ANY_TAG}\s*,\s*{ANY_TAG}\s*\)', ' [[EQUATION]] ', text)
+
+        # Caret start/middle/end with tags
+        text = re.sub(rf'(?<![A-Za-z])\^\{{[^{{}}]{{0,40}}\}}(?:\)\^?\d*)?', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*\^\{{[^{{}}]{{0,40}}\}}(?:\)\^?\d*)?', ' [[EQUATION]] ', text)
+        text = re.sub(rf'(?<![A-Za-z])[A-Za-z]\s*\^\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*\^[A-Za-z0-9+\-]{{1,6}}(?:\s*{ANY_TAG})?', ' [[EQUATION]] ', text)
+        text = re.sub(rf'(?<![A-Za-z])[A-Za-z]\s*\^(?![\w{{])', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\^[A-Za-z0-9+\-]{{1,4}}(?:\+)?(?=\s|[.,;]|$)', ' [[EQUATION]] ', text)
+
+        # Braces / stacked LaTeX debris
+        def _math_brace_shell(m):
+            inner = m.group(1)
+            if re.search(r'[A-Za-z]{3,}', inner):
+                return m.group(0)
+            return ' [[EQUATION]] '
+        text = re.sub(r'\{([^{}]{1,20})\}', _math_brace_shell, text)
+        text = re.sub(rf'\{{[^{{}}]{{0,20}}\}}[A-Za-z]_(?:[A-Za-z]|[A-Za-z0-9])', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\{{[^{{}}]{{0,20}}{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*\{{[^{{}}]{{0,20}}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*_\s*\{{\s*{ANY_TAG}\s*\)\s*', ' [[EQUATION]] ', text)
+        text = re.sub(rf'[A-Za-z]_\s*\{{\s*{ANY_TAG}\s*\)\s*', ' [[EQUATION]] ', text)
+        text = re.sub(rf'(?<![A-Za-z])[A-Za-z]_\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*_\s*\{{[^{{}}]*\)?', ' [[EQUATION]] ', text)
+        text = re.sub(rf'\\?\[\s*[A-Za-z]_\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'{ANY_TAG}\s*_\s*\{{[^{{}}]*\^', ' [[EQUATION]] ', text)
+        text = re.sub(rf'[A-Za-z]\s+[A-Za-z]\s+\{{\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'=?\s*Ø\s+\{{\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+        text = re.sub(rf'∈\s*[A-Z]\s+[A-Za-z]\s+\{{\s*{ANY_TAG}', ' [[EQUATION]] ', text)
+
+        # Economy / MGTBench notation
+        text = re.sub(
+            r'(?<![A-Za-z_])[A-Z][A-Za-z]*_[A-Za-z0-9]{1,6}(?![A-Za-z])',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            r'(?<![A-Za-z_])[A-Za-z]_[A-Za-z0-9]\s*\([^)]{0,60}\)',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'{ANY_TAG}\s*\(\s*[A-Za-z](?:\s*,\s*[A-Za-z])?\s*\)',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(r'\b[A-Za-z][A-Za-z0-9_]*\s*:=\s*(?:\[\[EQUATION\]\]|\[\[CODE\]\])', ' [[EQUATION]] ', text)
+        text = re.sub(
+            r'Σ\s*[A-Za-z](?:\s+[A-Za-z])*\s*≤\s*Σ\s*[A-Za-z]',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            r'p\s*·\s*(?:\(\s*Σ|[A-Za-z])',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            r'p\s*·\s*\(\s*Σ\s*[A-Za-z](?:_[A-Za-z0-9]+)?\s*-\s*Σ',
+            ' [[EQUATION]] ', text
+        )
+
+        # EE leftover $...$ complexity atoms
+        text = re.sub(r'\$\([A-Za-z0-9+\-]{2,40}\)\$', ' [[EQUATION]] ', text)
+        text = re.sub(
+            rf'{ANY_TAG}\([A-Z0-9+]{{3,40}}\)\^?\d*(?:\([A-Z0-9+]{{3,40}}\))?\s*{ANY_TAG}',
+            ' [[EQUATION]] ', text
+        )
+
+        # Physics: single-letter atoms between tags; CODE _ TAG ^i+
+        text = re.sub(
+            rf'(?<![A-Za-z]){ANY_TAG}\s+[A-Za-z]\s+{ANY_TAG}',
+            ' [[EQUATION]] ', text
+        )
+        text = re.sub(
+            rf'{CODE}\s*_\s*{ANY_TAG}\s*\^[A-Za-z0-9+\-]+\s*{CODE}',
+            ' [[CODE]] ', text
+        )
+
+        # Broken array read after citation pass
+        text = re.sub(
+            r'dp\s*\[\[CITATION\]\]\s*\[[A-Za-z0-9+\-\.]+\]',
+            ' [[CODE]] ', text
+        )
+
+        # Space after placeholder glued to a word
+        text = re.sub(
+            r'\]\](?=(?:In|The|where|Step|[A-Za-z]{2,}))',
+            ']] ', text
+        )
+
+        text = re.sub(r'(\[\[EQUATION\]\]\s*){2,}', '[[EQUATION]] ', text)
+        text = re.sub(r'(\[\[CODE\]\]\s*){2,}', '[[CODE]] ', text)
 
     # LaTeX spacing, percent, and accent escapes
     text = re.sub(r'\\,', ' ', text)

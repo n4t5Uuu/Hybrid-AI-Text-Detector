@@ -7,6 +7,11 @@ What the pipeline already handles, plus leftovers still seen in `claude_dataset_
 ### Math / physics (`[[EQUATION]]`)
 
 - LaTeX: `\begin{...}...\end{...}`, `$$...$$`, `$...$` (math only — not `$perseverance$` or `$0.3 trillion ... $19.5`), `\[...\]`, `\(...\)`, `\[command]{...}`
+- Leftover LaTeX shells after tags: `$h([[CODE]])$`, `$h([[CODE]]) = h([[CODE]])$`, `$h([[CODE]] _Z)$`, `$Nbr(i)$`, `$\{S_{1}^{[[EQUATION]]}, ...\}$`, `[[CODE]] _Z$`, `[[CODE]] ^T`, `R^l_+`, `Z_q^*`, `[[EQUATION]] ^{s}_{[[EQUATION]], [[EQUATION]]}$`, `K_j$`, `D[N]$`, `[[EQUATION]] dv.$`, `$Z= [[CODE]]`, `$f: [[EQUATION]]`, `$L^{2, [[EQUATION]]`, `p_{uphill}$`, `$ELU$`, `$a,b,c$`. Keep currency (`$25,000`) and italic names (`_Pamela_`, `_this_`). Underscore is math when the middle is not a word/name (`_Z`, `_2`, `S_{1}`).
+- Seen MGTBench debris (phase 2 mop): split commands (`\ oindent`, `\ abla`, `\ otin`), `Figs.~{ [[EQUATION]] }`, set braces (`=\{ [[CODE]], [[CODE]] \}`), label keys (`lem:momentsTX}`), trailing `$` on short ids (`p_M$`, `0.9$`), half-open `$L^{2, [[EQUATION]]`.
+- Common paper/converter families (broken after tags): `\frac{ [[EQUATION]] }{ [[EQUATION]] }`, `\sqrt{ [[EQUATION]] }`, `\sum_{...}^{...}`, `\left( [[EQUATION]] \right)`, `\begin{align}...\end{align}`, `\label{eq:foo}`, `\eqref{eq:1}`, `\ket{ [[EQUATION]] }`, `\bra{\psi}`, `\( [[EQUATION]] \)`, relation commands (`\leq`, `\neq`, `\in`). Skip rare custom macros unless they appear in the files.
+- Claude / MGTBench mop: geometry `∠ABC`, `△ABC`, `x°`; algebra tails `+ bx + c`, `/ (2a)`, `x = (- [[EQUATION]]`; primes `a'^2`; carets `^2`, `x^`, `^{-1})^2`; braces `{d+c}`, stacked `^_{j}`, `c_{ TAG )`; economy `U_i`, `:=`, `Σ`, `p ·`; EE `$(2IJS)$`; physics `\[ V_`, `^i+`. Keep `+ (plus)` pedagogical lines and `_Pamela_`.
+- Array reads (`[[CODE]]`): `dp[i][j]`, `S[i] == S[j]`, `S[i...j]`, `dp[0][n-1]` (before citations); mop `dp [[CITATION]] [n-1]`.
 - Integrals with differentials (`∫ ... dx`)
 - Algebraic / comparison equations: `=`, `==`, `!=`, `<`, `>`, `≤`, `≥`, `≈`
 - Short assignments: `b = -5`, `c = 2` (1–3 letter LHS)
@@ -77,7 +82,10 @@ These should stay at **0** after a re-clean.
 | `Mass (m) =` leftover | 0 |
 | `[[EQUATION]] x + c` | 0 |
 | `b = -5` leftover | 0 |
-| `[Car] |-- [Dashboard]` | 0 |
+| `$h([[CODE]])$` / `[[CODE]] _Z$` leftover | 0 |
+| Split `\ oindent`, `\frac{TAG}{TAG}`, `\ket{TAG}` debris | 0 |
+| Claude/MGTBench: `∠`, `^`, `{d+c}`, `U_i`, `dp[i]` next to tags | 0 |
+| `_Pamela_` / `$25,000` / `+ (plus)` wiped | must stay |
 
 Re-check on the actual CSV after every regex change. Do not trust a plausible diff.
 
@@ -109,6 +117,10 @@ num = -1
 [[CODE]] - [[CODE]]
 [[CODE]] returns [[CODE]]
 [[CODE]] [[EQUATION]] [[CODE]]
+$h( [[CODE]] _Z)$
+\frac{ [[EQUATION]] }{ [[EQUATION]] }
+\left( [[EQUATION]] \right)
+\label{eq:foo}
 [Car] |-- [Dashboard]
 a + b. Step 2
 ```
