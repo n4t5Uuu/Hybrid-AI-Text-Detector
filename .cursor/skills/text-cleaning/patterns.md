@@ -65,6 +65,14 @@ What the pipeline already handles, plus leftovers still seen in `claude_dataset_
 - Non-academic creative prompts dropped (`is_academic_content` on **prompt only**) — includes `vivid scenes`, `in vivid detail`, `explore the senses`, `run with passion`, `pretend that you are`
 - Foreign-language rows dropped (`contains_foreign_language`; loanwords like café kept)
 
+### Gemini markdown (`clean_markdown_formatting` — before `clean_pipeline`)
+
+- Headings: `## Title`, `### Section ###`, `## Title ##` → plain title text
+- Bold: `**Environmental Benefits:**`, `**In conclusion, ...**` → unwrapped prose
+- Bullets: line-start `* **point**` → bullet text without `*` marker
+- Single-word italic: `_word_` → `word`
+- Not in global `clean_pipeline` (Gemini-only via `clean_gemini_dataset`)
+
 ## Verification counts
 
 These should stay at **0** after a re-clean.

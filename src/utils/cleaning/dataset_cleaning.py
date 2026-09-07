@@ -10,12 +10,26 @@ import pandas as pd
 from tqdm.auto import tqdm
 
 from .cleaning_methods import (
+    clean_markdown_formatting,
     clean_pipeline,
     contains_foreign_language,
     foreign_skip_counter,
     is_academic_content,
+    strip_surrogate_characters,
 )
 from .placeholder_density import placeholder_density, placeholder_density_windowed
+
+
+def _save_cleaned_csv(df, output_path):
+    """Write a cleaned dataset CSV with utf-8 and no surrogate code points."""
+    df_out = df.copy()
+    for col in df_out.columns:
+        if df_out[col].dtype == object or pd.api.types.is_string_dtype(df_out[col]):
+            df_out[col] = df_out[col].map(
+                lambda v: strip_surrogate_characters(v) if isinstance(v, str) else v
+            )
+    df_out.to_csv(output_path, index=False, encoding='utf-8')
+
 
 def extract_claude_prompt_and_response(text):
     """
@@ -157,7 +171,7 @@ def clean_claude_dataset(claude_csv_path, processed_dir, sample_size=None, densi
 
     filename = f"claude_dataset_cleaned_{sample_size}.csv" if sample_size else "claude_dataset_cleaned.csv"
     output_path = Path(processed_dir) / filename
-    df_processed.to_csv(output_path, index=False)
+    _save_cleaned_csv(df_processed, output_path)
     print(f"\nSuccessfully saved cleaned dataset ({len(df_processed)} rows) to:\n  {output_path.resolve()}")
 
     print("\n--- SAMPLE CLEANED DATA (FIRST 20 ROWS) ---")
@@ -303,7 +317,136 @@ def clean_mgtbench_ai_dataset(
         else "mgtbench_ai_dataset_cleaned.csv"
     )
     output_path = processed_dir / filename
-    df_processed.to_csv(output_path, index=False)
+    _save_cleaned_csv(df_processed, output_path)
+    print(f"\nSuccessfully saved cleaned dataset ({len(df_processed)} rows) to:\n  {output_path.resolve()}")
+
+    print("\n--- SAMPLE CLEANED DATA (FIRST 10 ROWS) ---")
+    ipd.display(df_processed.head(10))
+
+    return df_processed
+
+
+def clean_gemini_dataset(
+    gemini_csv_path,
+    processed_dir,
+    sample_size=None,
+    density_threshold=0.4,
+    drop_foreign_rows=True,
+):
+    """
+    Cleans the Gemini essays CSV (text, label, prompt_name, source, RDizzl3_seven),
+    filters foreign-language rows, strips markdown, runs clean_pipeline on each row,
+    filters by placeholder density, saves one combined CSV to processed_dir, and
+    returns the cleaned DataFrame.
+    """
+    gemini_csv_path = Path(gemini_csv_path)
+    processed_dir = Path(processed_dir)
+    if not gemini_csv_path.exists():
+        print(f"File not found at: {gemini_csv_path}")
+        return None
+
+    foreign_skip_counter['too_short'] = 0
+
+    print(f"Loading {'first ' + str(sample_size) if sample_size else 'all'} rows from {gemini_csv_path.name}...")
+    df_raw = pd.read_csv(gemini_csv_path, nrows=sample_size)
+
+    texts = []
+    labels = []
+    prompt_names = []
+    sources = []
+    rdizzl3_seven = []
+    dropped_foreign = 0
+    dropped_empty = 0
+    dropped_density = 0
+    dropped_locally_dense = 0
+
+    print("Cleaning & filtering Gemini dataset...")
+    for _, row in tqdm(df_raw.iterrows(), total=len(df_raw), desc="Processing Rows"):
+        raw_text = str(row['text']).strip() if pd.notna(row['text']) else ''
+        if not raw_text:
+            dropped_empty += 1
+            continue
+
+        if drop_foreign_rows and contains_foreign_language(raw_text):
+            dropped_foreign += 1
+            continue
+
+        cleaned = clean_markdown_formatting(raw_text).strip()
+        cleaned = clean_pipeline(cleaned).strip()
+        if not cleaned:
+            dropped_empty += 1
+            continue
+
+        if placeholder_density(cleaned) >= density_threshold:
+            dropped_density += 1
+            continue
+
+        if placeholder_density_windowed(cleaned):
+            dropped_locally_dense += 1
+            continue
+
+        texts.append(cleaned)
+        labels.append(row['label'])
+        prompt_names.append(row['prompt_name'] if pd.notna(row.get('prompt_name')) else '')
+        sources.append(row['source'] if pd.notna(row.get('source')) else '')
+        rdizzl3_seven.append(row['RDizzl3_seven'] if pd.notna(row.get('RDizzl3_seven')) else '')
+
+    df_processed = pd.DataFrame({
+        'text': texts,
+        'label': labels,
+        'prompt_name': prompt_names,
+        'source': sources,
+        'RDizzl3_seven': rdizzl3_seven,
+    })
+
+    summary_data = {
+        'Metric': [
+            'Total Rows Loaded',
+            'Dropped (Foreign-Language Content)',
+            'Dropped (Empty After Cleaning)',
+            'Dropped (Too Placeholder-Dense)',
+            'Dropped (Locally Dense Cluster)',
+            'Total Rows Kept',
+            '[[EQUATION]] Tags Inserted',
+            '[[CODE]] Tags Inserted',
+            '[[CITATION]] Tags Inserted',
+            '[[COMPLEXITY]] Tags Inserted',
+            '[[URL]] Tags Inserted',
+            '[[MUSIC]] Tags Inserted',
+            'Sentences Skipped (Too Short to Detect Language)',
+        ],
+        'Count': [
+            len(df_raw),
+            dropped_foreign,
+            dropped_empty,
+            dropped_density,
+            dropped_locally_dense,
+            len(df_processed),
+            df_processed['text'].str.count(r'\[\[EQUATION\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[CODE\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[CITATION\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[COMPLEXITY\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[URL\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[MUSIC\]\]').sum() if len(df_processed) else 0,
+            foreign_skip_counter['too_short'],
+        ],
+    }
+
+    print("\n--- GEMINI CLEANING SUMMARY ---")
+    ipd.display(pd.DataFrame(summary_data))
+
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    for old in processed_dir.glob('gemini_essays_v1_cleaned*.csv'):
+        old.unlink()
+        print(f"Removed old combined file: {old.name}")
+
+    filename = (
+        f"gemini_essays_v1_cleaned_{sample_size}.csv"
+        if sample_size
+        else "gemini_essays_v1_cleaned.csv"
+    )
+    output_path = processed_dir / filename
+    _save_cleaned_csv(df_processed, output_path)
     print(f"\nSuccessfully saved cleaned dataset ({len(df_processed)} rows) to:\n  {output_path.resolve()}")
 
     print("\n--- SAMPLE CLEANED DATA (FIRST 10 ROWS) ---")
@@ -551,7 +694,7 @@ def clean_bawe_dataset(
         else "bawe_corpus_dataset_cleaned.csv"
     )
     output_path = processed_dir / filename
-    df_processed.to_csv(output_path, index=False)
+    _save_cleaned_csv(df_processed, output_path)
     print(f"\nSuccessfully saved cleaned dataset ({len(df_processed)} rows) to:\n  {output_path.resolve()}")
 
     print("\n--- SAMPLE CLEANED DATA (FIRST 10 ROWS) ---")

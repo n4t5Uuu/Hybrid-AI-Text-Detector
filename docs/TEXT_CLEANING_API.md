@@ -4,7 +4,7 @@
 
 - `cleaning_methods.py` — regex cleaners, filters, `clean_pipeline`, constants
 - `placeholder_density.py` — row density filters
-- `dataset_cleaning.py` — `clean_claude_dataset`, `clean_mgtbench_ai_dataset`
+- `dataset_cleaning.py` — `clean_claude_dataset`, `clean_mgtbench_ai_dataset`, `clean_gemini_dataset`
 
 Import from `utils.cleaning`.
 
@@ -61,6 +61,13 @@ Cleans: `C-G-D-A`, `F#-Bb-D`
 
 ### `clean_list_numbering(text)`
 Removes: `1.`, `a)` / `b.` after start/newline/colon (not after `a + b. Step`), `i.`, `- bullet`
+
+### `clean_markdown_formatting(text)`
+Strips Gemini-style markdown to plain text (call before `clean_pipeline`; not in global pipeline)
+
+Cleans: line headings `## Title`, `### Section ###`, `## Title ##`; bold `**text**`; line-start `* ` bullets; single-word `_italic_`
+
+Example: `## Car-Free Cities` → `Car-Free Cities`; `**Environmental Benefits:**` → `Environmental Benefits:`
 
 ### `strip_reference_list(text)`
 Cuts off everything after "References:" or "Bibliography:"
@@ -166,6 +173,20 @@ Use in notebook:
 ```python
 mgtbench_ai_path = RAW_AI_DIR / 'mgtbench_ai_dataset.csv'
 df = clean_mgtbench_ai_dataset(mgtbench_ai_path, PROCESSED_AI_DIR, sample_size=None)
+```
+
+### `clean_gemini_dataset(gemini_csv_path, processed_dir, sample_size=None, density_threshold=0.4, drop_foreign_rows=True)`
+Full pipeline for Gemini essays (`text`, `label`, `prompt_name`, `source`, `RDizzl3_seven`):
+1. Loads CSV
+2. Filters foreign language on raw text (optional)
+3. Runs `clean_markdown_formatting()` then `clean_pipeline()` on each row
+4. Drops empty rows and rows failing `placeholder_density()` / `placeholder_density_windowed()`
+5. Saves `gemini_essays_v1_cleaned.csv` (or `gemini_essays_v1_cleaned_{N}.csv` when `sample_size=N`)
+
+Use in notebook:
+```python
+gemini_path = RAW_AI_DIR / 'gemini_essays_v1.csv'
+df = clean_gemini_dataset(gemini_path, PROCESSED_AI_DIR, sample_size=None)
 ```
 
 ---

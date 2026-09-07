@@ -12,6 +12,7 @@ from .cleaning_methods import (
     clean_code_texts,
     clean_complexity_notation,
     clean_list_numbering,
+    clean_markdown_formatting,
     clean_math_texts,
     clean_music_notation,
     clean_pipeline,
@@ -25,11 +26,13 @@ from .cleaning_methods import (
     merge_continuous_equations,
     mop_up_leftover_math_and_code,
     strip_reference_list,
+    strip_surrogate_characters,
 )
 from .placeholder_density import placeholder_density, placeholder_density_windowed
 from .dataset_cleaning import (
     clean_bawe_dataset,
     clean_claude_dataset,
+    clean_gemini_dataset,
     clean_mgtbench_ai_dataset,
     extract_claude_prompt_and_response,
     ingest_bawe_dataset,
@@ -52,9 +55,11 @@ __all__ = [
     "clean_code_texts",
     "clean_complexity_notation",
     "clean_list_numbering",
+    "clean_markdown_formatting",
     "clean_citations",
     "clean_url",
     "strip_reference_list",
+    "strip_surrogate_characters",
     "clean_music_notation",
     "merge_continuous_equations",
     "mop_up_leftover_math_and_code",
@@ -68,5 +73,6 @@ __all__ = [
     "ingest_bawe_dataset",
     "clean_claude_dataset",
     "clean_mgtbench_ai_dataset",
+    "clean_gemini_dataset",
     "clean_bawe_dataset",
 ]

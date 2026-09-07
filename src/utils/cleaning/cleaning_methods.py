@@ -528,6 +528,33 @@ def clean_complexity_notation(text):
     return text
 
 
+def clean_markdown_formatting(text):
+    """
+    Strip Gemini-style markdown to plain text: headings, bold, bullets, italic.
+    Call before clean_pipeline for Gemini rows; not part of clean_pipeline.
+    """
+    if not isinstance(text, str):
+        return text
+
+    # Markdown headings: ## Title, ### Section ###, ## Title ##
+    text = re.sub(r'(?m)^#{1,6}\s+(.+?)(?:\s#+)?\s*$', r'\1', text)
+
+    # Bullet markers at line start: * item
+    text = re.sub(r'(?m)^\*\s+', ' ', text)
+
+    # Bold: **text**
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+
+    # Italic: *text* (single asterisk, not bold)
+    text = re.sub(r'(?<!\*)\*(?!\*)([^*\n]+?)(?<!\*)\*(?!\*)', r'\1', text)
+
+    # Single-word italic: _word_
+    text = re.sub(r'(?<!\w)_(\w+)_(?!\w)', r'\1', text)
+
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
 def clean_list_numbering(text):
     """
         Cleans texts that has any numbering in it
@@ -1562,6 +1589,14 @@ def contains_foreign_language(text):
 
     return False
 
+
+def strip_surrogate_characters(text):
+    """Remove UTF-16 surrogate code points that break utf-8 CSV writes."""
+    if not isinstance(text, str):
+        return text
+    return ''.join(ch for ch in text if not (0xD800 <= ord(ch) <= 0xDFFF))
+
+
 def clean_pipeline(text):
     """
     Combined cleaning pipeline for all of the datasets.
@@ -1584,4 +1619,4 @@ def clean_pipeline(text):
     text = clean_code_assignments(text)
     text = merge_continuous_equations(text, tag='[[EQUATION]]')
     text = merge_continuous_equations(text, tag='[[CODE]]')
-    return text
+    return strip_surrogate_characters(text)
