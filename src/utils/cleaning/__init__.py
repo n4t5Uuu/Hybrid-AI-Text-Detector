@@ -34,6 +34,7 @@ from .dataset_cleaning import (
     clean_claude_dataset,
     clean_gemini_dataset,
     clean_mgtbench_ai_dataset,
+    combine_cleaned_datasets,
     extract_claude_prompt_and_response,
     ingest_bawe_dataset,
     parse_bawe_xml,
@@ -75,4 +76,5 @@ __all__ = [
     "clean_mgtbench_ai_dataset",
     "clean_gemini_dataset",
     "clean_bawe_dataset",
+    "combine_cleaned_datasets",
 ]

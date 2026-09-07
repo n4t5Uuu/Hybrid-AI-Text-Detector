@@ -701,3 +701,108 @@ def clean_bawe_dataset(
     ipd.display(df_processed.head(10))
 
     return df_processed
+
+
+def combine_cleaned_datasets(
+    processed_ai_dir,
+    processed_human_dir,
+    output_dir=None,
+    output_name='combined_dataset.csv',
+):
+    """
+    Stack the four cleaned datasets into one labeled table for modeling.
+
+    Output columns: text, label, source, subject
+    - label: 0 = human (BAWE), 1 = AI (MGTBench, Claude, Gemini)
+    - source: bawe | mgtbench | claude | gemini
+    """
+    processed_ai_dir = Path(processed_ai_dir)
+    processed_human_dir = Path(processed_human_dir)
+    output_dir = Path(output_dir) if output_dir else processed_ai_dir.parent
+
+    sources = {
+        'bawe': {
+            'path': processed_human_dir / 'bawe_corpus_dataset_cleaned.csv',
+            'label': 0,
+            'source': 'bawe',
+        },
+        'mgtbench': {
+            'path': processed_ai_dir / 'mgtbench_ai_dataset_cleaned.csv',
+            'label': 1,
+            'source': 'mgtbench',
+        },
+        'claude': {
+            'path': processed_ai_dir / 'claude_dataset_cleaned.csv',
+            'label': 1,
+            'source': 'claude',
+        },
+        'gemini': {
+            'path': processed_ai_dir / 'gemini_essays_v1_cleaned.csv',
+            'label': 1,
+            'source': 'gemini',
+        },
+    }
+
+    frames = []
+    missing = []
+    for name, meta in sources.items():
+        path = meta['path']
+        if not path.exists():
+            missing.append(str(path))
+            continue
+
+        df = pd.read_csv(path)
+        if name == 'claude':
+            text_col = 'cleaned_text' if 'cleaned_text' in df.columns else 'text'
+            rows = pd.DataFrame({
+                'text': df[text_col].astype(str),
+                'label': meta['label'],
+                'source': meta['source'],
+                'subject': '',
+            })
+        elif name == 'gemini':
+            rows = pd.DataFrame({
+                'text': df['text'].astype(str),
+                'label': meta['label'],
+                'source': meta['source'],
+                'subject': df['prompt_name'].fillna('').astype(str) if 'prompt_name' in df.columns else '',
+            })
+        else:
+            rows = pd.DataFrame({
+                'text': df['text'].astype(str),
+                'label': meta['label'],
+                'source': meta['source'],
+                'subject': df['subject'].fillna('').astype(str) if 'subject' in df.columns else '',
+            })
+        frames.append(rows)
+
+    if missing:
+        print('Missing cleaned files (run the per-dataset cells first):')
+        for path in missing:
+            print(f'  - {path}')
+    if not frames:
+        print('No cleaned datasets found to combine.')
+        return None
+
+    df_combined = pd.concat(frames, ignore_index=True)
+    df_combined = df_combined[df_combined['text'].str.strip().astype(bool)]
+    df_combined = df_combined[['text', 'label', 'source', 'subject']]
+
+    summary = df_combined.groupby(['source', 'label'], as_index=False).size()
+    summary.columns = ['source', 'label', 'rows']
+
+    print('\n--- COMBINED DATASET SUMMARY ---')
+    ipd.display(summary)
+    print(f"\nTotal rows: {len(df_combined):,}")
+    print(f"Human (label=0): {(df_combined['label'] == 0).sum():,}")
+    print(f"AI (label=1):    {(df_combined['label'] == 1).sum():,}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / output_name
+    _save_cleaned_csv(df_combined, output_path)
+    print(f"\nSuccessfully saved combined dataset to:\n  {output_path.resolve()}")
+
+    print('\n--- SAMPLE COMBINED DATA (FIRST 10 ROWS) ---')
+    ipd.display(df_combined.head(10))
+
+    return df_combined
