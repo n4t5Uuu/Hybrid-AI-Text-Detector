@@ -97,6 +97,7 @@ To download Kaggle datasets automatically in `data_ingestion.ipynb`, set up your
 3. Run the cells sequentially to populate:
    - `data/raw/ai/` (GPT-3.5, Claude, Gemini-Pro)
    - `data/raw/human/` (BAWE Corpus)
+4. Open `src/notebooks/data_cleaning.ipynb` and run all cells to write cleaned CSVs under `data/processed/ai/` and `data/processed/human/`.
 
 ---
 

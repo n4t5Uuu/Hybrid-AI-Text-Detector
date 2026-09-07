@@ -4,7 +4,7 @@
 
 - `cleaning_methods.py` — regex cleaners, filters, `clean_pipeline`, constants
 - `placeholder_density.py` — row density filters
-- `dataset_cleaning.py` — `clean_claude_dataset`, `clean_mgtbench_ai_dataset`, `clean_gemini_dataset`
+- `dataset_cleaning.py` — `clean_claude_dataset`, `clean_mgtbench_ai_dataset`, `clean_gemini_dataset`, `clean_bawe_dataset`, `ingest_bawe_dataset`
 
 Import from `utils.cleaning`.
 
@@ -69,6 +69,9 @@ Cleans: line headings `## Title`, `### Section ###`, `## Title ##`; bold `**text
 
 Example: `## Car-Free Cities` → `Car-Free Cities`; `**Environmental Benefits:**` → `Environmental Benefits:`
 
+### `strip_surrogate_characters(text)`
+Removes UTF-16 surrogate code points that break UTF-8 CSV writes. Called automatically at the end of `clean_pipeline()`. Dataset savers also sanitize all string columns before write.
+
 ### `strip_reference_list(text)`
 Cuts off everything after "References:" or "Bibliography:"
 
@@ -125,6 +128,7 @@ Order:
 3. Math (3 passes: bare → full → residual)
 4. Merge adjacent tags
 5. Mop-up leftover math/code fragments, then merge again
+6. `strip_surrogate_characters()` (final pass)
 
 Example:
 ```python
@@ -189,6 +193,30 @@ gemini_path = RAW_AI_DIR / 'gemini_essays_v1.csv'
 df = clean_gemini_dataset(gemini_path, PROCESSED_AI_DIR, sample_size=None)
 ```
 
+### `ingest_bawe_dataset(corpus_dir, output_path)`
+Parses BAWE TEI XML under `CORPUS_ByDisc` and writes one raw CSV (`id`, `text`, `file`, `subject`, `course`). Used in `data_ingestion.ipynb` after downloading/extracting the BAWE zip.
+
+Use in notebook:
+```python
+bawe_corpus_dir = RAW_HUMAN_DIR / 'bawe' / 'download' / 'CORPUS_ByDisc'
+bawe_csv_path = RAW_HUMAN_DIR / 'bawe_dataset.csv'
+df_bawe = ingest_bawe_dataset(bawe_corpus_dir, bawe_csv_path)
+```
+
+### `clean_bawe_dataset(bawe_csv_path, processed_dir, sample_size=None, density_threshold=0.4, drop_foreign_rows=True)`
+Full pipeline for BAWE human essays (`id`, `text`, `file`, `subject`, `course`):
+1. Loads CSV
+2. Filters foreign language on raw text (optional)
+3. Runs `clean_pipeline()` on each row
+4. Drops empty rows and rows failing `placeholder_density()` / `placeholder_density_windowed()`
+5. Saves `bawe_corpus_dataset_cleaned.csv` (or `bawe_corpus_dataset_cleaned_{N}.csv` when `sample_size=N`; `sample_size` is per subject when set)
+
+Use in notebook:
+```python
+bawe_path = RAW_HUMAN_DIR / 'bawe_dataset.csv'
+df = clean_bawe_dataset(bawe_path, PROCESSED_HUMAN_DIR, sample_size=None)
+```
+
 ---
 
 ## Placeholder Tags We Use
@@ -216,32 +244,14 @@ df = clean_gemini_dataset(gemini_path, PROCESSED_AI_DIR, sample_size=None)
 
 ## When You Add New Datasets
 
-Copy the `clean_claude_dataset()` pattern:
+Copy a dataset cleaner in `dataset_cleaning.py` (see `clean_claude_dataset` or `clean_bawe_dataset`):
 
-```python
-def clean_your_dataset(csv_path, output_dir, sample_size=None):
-    df = pd.read_csv(csv_path, nrows=sample_size)
-    
-    cleaned = []
-    for text in tqdm(df['text_column']):
-        # Filter
-        if not is_academic_content(text=text):
-            continue
-        if contains_foreign_language(text):
-            continue
-        
-        # Clean
-        cleaned_text = clean_pipeline(text)
-        
-        # Density check
-        if placeholder_density(cleaned_text) >= 0.4:
-            continue
-        if placeholder_density_windowed(cleaned_text):
-            continue
-        
-        cleaned.append(cleaned_text)
-    
-    # Save
-    output = output_dir / "your_dataset_cleaned.csv"
-    pd.DataFrame({'cleaned_text': cleaned}).to_csv(output, index=False)
-```
+1. Load raw CSV from `data/raw/ai/` or `data/raw/human/`
+2. Filter (foreign language, academic content if needed)
+3. Optional dataset-specific pre-pass (e.g. `clean_markdown_formatting` for Gemini)
+4. `clean_pipeline()` per row
+5. Drop rows failing `placeholder_density()` and `placeholder_density_windowed()`
+6. Save with `_save_cleaned_csv()` (UTF-8 + surrogate sanitization on all string columns)
+7. Print summary stats like existing cleaners
+
+Wire the new function into `utils/cleaning/__init__.py` and add a cell to `data_cleaning.ipynb`.
