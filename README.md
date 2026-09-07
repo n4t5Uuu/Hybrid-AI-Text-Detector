@@ -95,8 +95,8 @@ To download Kaggle datasets automatically in `data_ingestion.ipynb`, set up your
 1. Open `src/notebooks/data_ingestion.ipynb` in VS Code.
 2. In the upper right corner of the notebook editor, click **Select Kernel** -> choose **`venv (Python)`**.
 3. Run the cells sequentially to populate:
-   - `data/raw/ai/` (Gemini, Claude, GPT-3.5, Llama-3, etc.)
-   - `data/raw/human/` (arXiv, Wikipedia, Gutenberg, BAWE)
+   - `data/raw/ai/` (GPT-3.5, Claude, Gemini-Pro)
+   - `data/raw/human/` (BAWE Corpus)
 
 ---
 
@@ -132,50 +132,64 @@ Make sure **never** to force-commit any of the following ignored paths:
 
 **Adviser:** Engr. Bernard C. Fabro, PCpE, MSc.
 
-## Architecture
+## System Architecture
+
+End-to-end pipeline for the thesis experiment and the deployed web application. The hybrid path (spaCy + ELECTRA + late fusion + XGBoost) is the proposed model; three baselines use the same XGBoost training procedure on different feature sets only.
 
 ```
-                     ┌────────────────────┐
-                     │  Input Texts        │
-                     │  Human: BAWE Corpus  │
-                     │  AI: GPT-3.5, Claude,│
-                     │       Gemini-Pro      │
-                     └─────────┬──────────┘
-                               │
-                     ┌─────────▼──────────┐
-                     │  Text Preprocessing │
-                     │  (cleaning,         │
-                     │   tokenization)     │
-                     └─────────┬──────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              │                                  │
-      ┌───────▼────────┐              ┌─────────▼─────────┐
-      │     spaCy       │              │      ELECTRA        │
-      │  Stylometric     │              │  Semantic Embeddings │
-      │  Features        │              │  ([CLS] token, 768-d)│
-      └───────┬────────┘              └─────────┬─────────┘
-              │                                  │
-              └────────────────┬─────────────────┘
-                               │
-                     ┌─────────▼──────────┐
-                     │   Late Fusion        │
-                     │  (Feature            │
-                     │   Concatenation)      │
-                     └─────────┬──────────┘
-                               │
-                     ┌─────────▼──────────┐
-                     │  XGBoost Classifier  │
-                     │  (Gradient Boosting) │
-                     └─────────┬──────────┘
-                               │
-                     ┌─────────▼──────────┐
-                     │   Output             │
-                     │  Human-Written /     │
-                     │  AI-Generated +      │
-                     │  Confidence Score     │
-                     └──────────────────────┘
+ 1. DATA INGESTION
+    BAWE Corpus (Human, label 0)  |  GPT-3.5, Claude 3/3.5, Gemini-Pro (AI, label 1)
+                    ↓
+ 2. TEXT PREPROCESSING & COMBINE
+    clean_pipeline per dataset → one unsplit table: text | source | label (~9,000 rows)
+    (see Preprocessing below; tokenization is NOT this step)
+                    ↓
+         ┌──────────┴──────────┐
+         ↓                     ↓
+ 3. FEATURE EXTRACTION    STANDALONE BASELINES (same combined table, skip fusion)
+    spaCy → S (N-dim)      spaCy-only → S
+    ELECTRA → E (768-d)    ELECTRA-only → E
+                           XGBoost-only → R (preprocessed-text / TF-IDF features)
+         ↓
+ 4. LATE FUSION (hybrid only)
+    H = [S | E]  →  N + 768 dimensional vector (hybrid XGBoost input X)
+                    ↓
+ 5. STRATIFIED SPLIT (once, after features)
+    70% train | 15% validation (held out) | 15% test
+    same row-indices on H, S, E, and R
+                    ↓
+ 6. MODEL DEVELOPMENT (all four models — identical procedure, different X)
+    Grid search + 5-fold CV on 70% → pick best params → refit on full 70% → score on 15% val
+    Hybrid: X=H  |  spaCy-only: X=S  |  ELECTRA-only: X=E  |  XGBoost-only: X=R
+                    ↓
+ 7. OUTPUTS & INTERPRETATION
+    Evaluate all four on the SAME 15% test → Table 6 metrics → paired t-test on FPR (α=0.05)
+    Per-text: predict_proba() → Human / Mixed / AI score bands (see below)
+
+    Web app (deployment): single text → clean → spaCy + ELECTRA → fuse → saved hybrid XGBoost → score
 ```
+
+### Preprocessing (`clean_pipeline`)
+
+Text is **standardized** (not linguistically normalized — no global lowercasing or stemming on the saved corpus). Each dataset is cleaned with `src/utils/cleaning/cleaning_methods.py`, then row-stacked into one table.
+
+**Per-dataset filters:** `is_academic_content` (Claude), `contains_foreign_language`, `clean_markdown_formatting` (Gemini only), drop empty rows, `placeholder_density >= 0.4`, windowed density check.
+
+**`clean_pipeline` order:** `[[URL]]` → `[[CODE]]` → `[[MUSIC]]` → `[[COMPLEXITY]]` → strip references → `[[CITATION]]` → list numbering → `[[EQUATION]]` (three math passes) → merge adjacent tags → mop leftover → strip surrogates.
+
+Full function reference: [`docs/TEXT_CLEANING_API.md`](docs/TEXT_CLEANING_API.md).
+
+### Model development (all four XGBoost models)
+
+Each configuration uses the **same** procedure on its own feature matrix:
+
+1. Take the **70% train** slice only (validation and test unseen during CV).
+2. **Grid search + 5-fold cross-validation** on that 70% to select hyperparameters.
+3. **Refit** on the full 70% with the best parameters.
+4. **Score on 15% validation** to confirm or select the final model.
+5. **Final evaluation on 15% test only** — metrics, Table 6, and paired t-test.
+
+Baselines skip **late fusion** only. They do **not** skip XGBoost or hyperparameter tuning.
 
 ## Detection Score Interpretation
 
@@ -189,24 +203,35 @@ The model outputs a probability confidence score via XGBoost's `predict_proba()`
 
 ## Datasets
 
-| Source | Category / Source Type | Size (approx.) |
-|---|---|---|
-| **BAWE Corpus** | Human-written academic texts | ~2,761 text files |
-| **MGTBench-2.0 (Human)** | Human-written reference texts (arXiv, Wikipedia, Gutenberg) | ~83,000 texts |
-| **MGTBench-2.0 (AI)** | AI-generated (GPT-3.5, GPT-4o-mini) | ~222,000 texts |
-| **QuietImpostor / Claude-3 Dataset** | Claude-generated texts | ~9,000 texts |
-| **Kaggle Gemini-Pro LLM DAIGT** | Gemini-Pro generated essays | ~14,000 texts |
+Experimental corpus (~9,000 texts) used in the architecture diagram and thesis methodology:
 
-Multi-source dataset covering both Human-written and AI-generated text across 16 academic disciplines, split 70% training / 15% validation / 15% test using stratified sampling.
+| Source | Label | Role | Size (approx.) |
+|---|---|---|---|
+| **BAWE Corpus** | 0 (Human) | Human-written academic essays | ~2,800 |
+| **MGTBench-2.0 (`gpt35_new`)** | 1 (AI) | GPT-3.5 generated academic texts | ~2,000 |
+| **QuietImpostor / Claude-3** | 1 (AI) | Claude 3 Opus & 3.5 Sonnet | ~700 |
+| **Kaggle Gemini-Pro LLM DAIGT** | 1 (AI) | Gemini-Pro generated essays | ~3,500 |
+
+After cleaning, all sources are combined into one table (`text | source | label`). Stratified sampling on label (and discipline) produces a single **70% / 15% / 15%** split applied identically to the hybrid and all baseline feature matrices.
 
 ## Methodology
 
-- **Feature Extraction:** spaCy (stylometric) and ELECTRA (semantic), extracted in parallel
-- **Fusion Strategy:** Late fusion — each pipeline is processed independently before concatenation at the classification stage
-- **Classification:** XGBoost with grid search and 5-fold cross-validation for hyperparameter tuning
-- **Baseline Comparison:** Evaluated against three standalone models — spaCy-only, ELECTRA-only, and XGBoost-only — under identical experimental conditions
+| Step | Description |
+|---|---|
+| **Ingestion** | Load BAWE (Human) and GPT-3.5, Claude, Gemini-Pro (AI) sources |
+| **Preprocessing** | Per-dataset `clean_pipeline` + filters; combine into one labeled table (no split yet) |
+| **Feature extraction** | spaCy (`en_core_web_sm`) stylometric vector **S**; ELECTRA (`google/electra-base-discriminator`, frozen) 768-d **E** CLS embedding; simple/TF-IDF **R** for XGBoost-only baseline |
+| **Late fusion** | Hybrid only: **H = [S \| E]** (N + 768 dimensions) |
+| **Split** | One stratified 70% / 15% val / 15% test; shared row-indices on **H**, **S**, **E**, **R** |
+| **Classification** | Four separate XGBoost models; grid search + 5-fold CV on 70%, refit on full 70%, validation check, test evaluation |
+| **Baselines** | spaCy-only (**X=S**), ELECTRA-only (**X=E**), XGBoost-only (**X=R**) — same splits, same XGBoost tuning, no late fusion |
 
-## Evaluation Metrics
+**Independent variable:** feature set (stylometric-only, neural-only, hybrid, simple-features).  
+**Dependent variable:** false positive rate (primary); accuracy, precision, recall, F1-score, ROC-AUC (secondary).
+
+## Evaluation & Outputs
+
+All four tuned models are evaluated on the **same 15% test set**. Results are reported in **Table 6** (spaCy, ELECTRA, XGBoost, Hybrid):
 
 - Accuracy
 - Precision
@@ -214,9 +239,11 @@ Multi-source dataset covering both Human-written and AI-generated text across 16
 - F1-Score
 - ROC-AUC
 - Confusion Matrix
-- **False Positive Rate** (primary metric)
+- **False Positive Rate (FPR)** — primary metric
 
-Statistical significance of the false positive rate reduction is assessed using a paired t-test at the 0.05 significance level.
+A **paired t-test** (α = 0.05) compares Hybrid FPR against each baseline FPR to accept or reject **H₀**.
+
+Per-text **AI detection output** (web app or single inference): binary label (0 = Human-written, 1 = AI-generated) plus `predict_proba()` score interpreted with the score bands in the section above — distinct from batch test-set metrics.
 
 ## Hypothesis
 
