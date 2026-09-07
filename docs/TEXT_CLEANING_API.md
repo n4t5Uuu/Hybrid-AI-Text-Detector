@@ -217,6 +217,26 @@ bawe_path = RAW_HUMAN_DIR / 'bawe_dataset.csv'
 df = clean_bawe_dataset(bawe_path, PROCESSED_HUMAN_DIR, sample_size=None)
 ```
 
+### `combine_cleaned_datasets(processed_ai_dir, processed_human_dir, output_dir=None, output_name='combined_dataset.csv')`
+Stacks the four cleaned datasets into one labeled table for modeling:
+1. Loads BAWE, MGTBench, Claude, and Gemini cleaned CSVs (skips any that are missing)
+2. Normalizes to columns `text`, `label`, `source`, `subject`
+3. Drops rows with empty text
+4. Saves `combined_dataset.csv` under `data/processed/` (or `output_dir`)
+
+| source | label | text column |
+|--------|-------|-------------|
+| bawe | 0 | `text` |
+| mgtbench | 1 | `text` |
+| claude | 1 | `cleaned_text` |
+| gemini | 1 | `text` |
+
+Use in notebook (after all four cleaners):
+```python
+PROCESSED_DIR = DATA_DIR / "processed"
+df = combine_cleaned_datasets(PROCESSED_AI_DIR, PROCESSED_HUMAN_DIR, output_dir=PROCESSED_DIR)
+```
+
 ---
 
 ## Placeholder Tags We Use
