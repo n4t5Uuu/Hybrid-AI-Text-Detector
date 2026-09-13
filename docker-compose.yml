@@ -1,0 +1,15 @@
+services:
+  feature-extraction:
+    build: .
+    image: hybrid-ai-feature-extraction:cu124
+    gpus: all
+    ports:
+      - "${JUPYTER_PORT:-8888}:8888"
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      JUPYTER_TOKEN: ${JUPYTER_TOKEN:-change-me}
+    volumes:
+      - ./data:/workspace/data
+      - ./src:/workspace/src

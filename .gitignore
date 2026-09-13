@@ -54,3 +54,7 @@ __pycache__/
 MGTBench-2.0/
 
 data/
+
+# local SSH keys (never commit)
+ssh-key-pair.txt
+ssh-key-pair.txt.pub

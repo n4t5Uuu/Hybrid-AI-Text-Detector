@@ -1,10 +1,6 @@
-# Deep Learning (GPU build for Python 3.13)
---extra-index-url https://download.pytorch.org/whl/cu121
-torch>=2.6.0
-torchvision>=0.21.0
-torchaudio>=2.6.0
+# GPU stack: PyTorch comes from the base image (CUDA 12.4). Install the rest with:
+#   pip install -r requirements-docker.txt
 
-# MGTBench core dependencies
 accelerate==1.0.0
 captum==0.7.0
 datasets>=2.21.0
@@ -22,21 +18,15 @@ tqdm==4.66.5
 transformers==4.45.2
 xgboost==2.1.4
 protobuf==5.29.3
-
-# Your project's additional NLP/ML tools
 spacy>=3.7.4
 cupy-cuda12x[ctk]>=13.0.0
 pyarrow>=15.0.0
 joblib>=1.3.0
 safetensors>=0.4.2
-
-# Jupyter
 jupyterlab>=4.1.5
 notebook>=7.1.2
 ipykernel>=6.29.3
 ipywidgets>=8.0.0
-
-# FastAPI backend
 fastapi>=0.110.0
 uvicorn>=0.28.0
 pydantic>=2.6.4

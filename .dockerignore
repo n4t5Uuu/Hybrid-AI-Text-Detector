@@ -1,0 +1,12 @@
+venv
+.venv
+__pycache__
+*.pyc
+.git
+.next
+node_modules
+data
+MGTBench-2.0
+.env
+.env.local
+*.ipynb_checkpoints
