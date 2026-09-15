@@ -13,57 +13,9 @@ from typing import Any, Dict, Optional, Sequence, Tuple
 
 import joblib
 import numpy as np
-import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from xgboost import XGBClassifier
-
-
-def _stratify_labels(labels: Sequence, subjects: Optional[Sequence] = None) -> np.ndarray:
-    labels_s = pd.Series(labels).astype(str)
-    if subjects is None:
-        return labels_s.to_numpy()
-    # Human/AI plus subject so each split keeps a similar mix.
-    subj = pd.Series(subjects).fillna("").astype(str)
-    return (labels_s + "__" + subj).to_numpy()
-
-
-def stratified_train_val_test_split(
-    n_rows: int,
-    labels: Sequence,
-    subjects: Optional[Sequence] = None,
-    train_size: float = 0.7,
-    val_size: float = 0.15,
-    test_size: float = 0.15,
-    random_state: int = 42,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Which row numbers are train, val, or test — keeps labels and subjects balanced.
-
-    Use the same three index lists on **H**, **S**, **E**, and **R** in the notebook.
-    """
-    if abs(train_size + val_size + test_size - 1.0) > 1e-6:
-        raise ValueError("train_size + val_size + test_size must equal 1.0")
-    indices = np.arange(n_rows)
-    strat = _stratify_labels(labels, subjects)
-    test_ratio = test_size
-    train_val_ratio = train_size + val_size
-    # Peel off 15% test, then split the remaining 85% into train and val.
-    idx_train_val, idx_test = train_test_split(
-        indices,
-        test_size=test_ratio,
-        random_state=random_state,
-        stratify=strat,
-    )
-    strat_tv = strat[idx_train_val]
-    val_ratio_of_tv = val_size / train_val_ratio
-    idx_train, idx_val = train_test_split(
-        idx_train_val,
-        test_size=val_ratio_of_tv,
-        random_state=random_state,
-        stratify=strat_tv,
-    )
-    return idx_train, idx_val, idx_test
 
 
 def fit_tfidf_on_train(

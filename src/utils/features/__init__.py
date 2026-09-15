@@ -9,10 +9,15 @@ from .spacy_features import (
     load_spacy_nlp,
     save_spacy_features,
 )
+from .data_splitting import (
+    load_split_indices,
+    save_split_artifacts,
+    split_balance_table,
+    stratified_train_val_test_split,
+)
 from .split_and_train import (
     fit_tfidf_on_train,
     save_split_and_models,
-    stratified_train_val_test_split,
     train_xgboost_gpu,
     transform_tfidf,
 )
@@ -29,6 +34,9 @@ __all__ = [
     "fuse_spacy_electra",
     "save_hybrid_features",
     "stratified_train_val_test_split",
+    "save_split_artifacts",
+    "load_split_indices",
+    "split_balance_table",
     "fit_tfidf_on_train",
     "transform_tfidf",
     "train_xgboost_gpu",
