@@ -15,9 +15,14 @@ from .data_splitting import (
     split_balance_table,
     stratified_train_val_test_split,
 )
+from .evaluate import classification_report_row, describe_fit, hybrid_cv_score
 from .split_and_train import (
+    features_on_gpu,
     fit_tfidf_on_train,
+    require_cuda_for_training,
+    save_hybrid_model,
     save_split_and_models,
+    smoke_test_xgboost_cuda,
     train_xgboost_gpu,
     transform_tfidf,
 )
@@ -39,6 +44,13 @@ __all__ = [
     "split_balance_table",
     "fit_tfidf_on_train",
     "transform_tfidf",
+    "require_cuda_for_training",
+    "smoke_test_xgboost_cuda",
+    "features_on_gpu",
     "train_xgboost_gpu",
     "save_split_and_models",
+    "save_hybrid_model",
+    "classification_report_row",
+    "hybrid_cv_score",
+    "describe_fit",
 ]
