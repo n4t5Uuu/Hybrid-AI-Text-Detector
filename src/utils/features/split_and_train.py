@@ -73,6 +73,31 @@ def require_cuda_for_training() -> None:
         )
 
 
+def downsample_ai_train(
+    x: np.ndarray,
+    y: np.ndarray,
+    ai_per_human: int = 10,
+    random_state: int = 42,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Keep every human row; sample AI rows so train is not 98% AI by count.
+
+    Val and test must use the full slices — only call this on train matrices.
+    """
+    y_arr = np.asarray(y).astype(int)
+    human_idx = np.flatnonzero(y_arr == 0)
+    ai_idx = np.flatnonzero(y_arr == 1)
+    n_human = len(human_idx)
+    if n_human == 0:
+        raise ValueError("No human (label 0) rows in y.")
+    n_ai = min(len(ai_idx), ai_per_human * n_human)
+    rng = np.random.default_rng(random_state)
+    ai_pick = rng.choice(ai_idx, size=n_ai, replace=False)
+    keep = np.concatenate([human_idx, ai_pick])
+    rng.shuffle(keep)
+    return x[keep], y_arr[keep]
+
+
 def features_on_gpu(x: np.ndarray):
     """Copy a feature matrix onto the GPU so XGBoost does not fall back to CPU data."""
     import cupy as cp
