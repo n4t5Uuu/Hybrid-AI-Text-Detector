@@ -127,6 +127,61 @@ def split_balance_table(
     )
 
 
+def corpus_summary_table(
+    df: pd.DataFrame,
+    idx_train: np.ndarray,
+    idx_val: np.ndarray,
+    idx_test: np.ndarray,
+    source_col: str = "source",
+    label_col: str = "label",
+) -> pd.DataFrame:
+    """
+    Thesis-style count of essays by source, class, and split.
+
+    One row per source (BAWE, MGTBench, Claude, Gemini) plus a total row.
+    Label 0 is human, 1 is AI.
+    """
+    assignment = pd.DataFrame(
+        {
+            source_col: df[source_col].astype(str).to_numpy(),
+            label_col: df[label_col].to_numpy(),
+        }
+    )
+    assignment["split"] = "train"
+    assignment.loc[idx_val, "split"] = "val"
+    assignment.loc[idx_test, "split"] = "test"
+
+    grouped = (
+        assignment.groupby([source_col, label_col, "split"], dropna=False)
+        .size()
+        .unstack("split", fill_value=0)
+    )
+    for col in ("train", "val", "test"):
+        if col not in grouped.columns:
+            grouped[col] = 0
+    grouped = grouped[["train", "val", "test"]].reset_index()
+    grouped["n"] = grouped["train"] + grouped["val"] + grouped["test"]
+    grouped["class"] = np.where(grouped[label_col].astype(int) == 0, "human", "AI")
+    grouped = grouped.rename(columns={source_col: "source"})
+    table = grouped[["source", "class", "n", "train", "val", "test"]].copy()
+    table["_human_first"] = (table["class"] != "human").astype(int)
+    table = table.sort_values(["_human_first", "source"]).drop(columns="_human_first")
+
+    total = pd.DataFrame(
+        [
+            {
+                "source": "total",
+                "class": "",
+                "n": int(table["n"].sum()),
+                "train": int(table["train"].sum()),
+                "val": int(table["val"].sum()),
+                "test": int(table["test"].sum()),
+            }
+        ]
+    )
+    return pd.concat([table, total], ignore_index=True)
+
+
 def label_proportions_by_split(
     df: pd.DataFrame,
     idx_train: np.ndarray,
