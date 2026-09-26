@@ -7,7 +7,7 @@ and once on the 15% test slice (the numbers that go in the write-up).
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
 from sklearn.metrics import (
@@ -100,3 +100,56 @@ def describe_fit(train: Dict[str, Any], val: Dict[str, Any], test: Dict[str, Any
         f"Just right: train/val/test FPR are {train_fpr:.1%} / {val_fpr:.1%} / "
         f"{test_fpr:.1%}, and ROC-AUC stays high on held-out rows."
     )
+
+
+def fpr_wilson_interval(fp: int, human_n: int, z: float = 1.96) -> Tuple[float, float]:
+    """
+    Wilson score interval for the human false-positive rate (fp / human_n).
+
+    Use on the test slice only; ~302 humans means a few mistakes move the rate a lot.
+    """
+    if human_n <= 0:
+        return (0.0, 0.0)
+    p = fp / human_n
+    z2 = z * z
+    denom = 1.0 + z2 / human_n
+    center = (p + z2 / (2.0 * human_n)) / denom
+    margin = (z / denom) * np.sqrt(p * (1.0 - p) / human_n + z2 / (4.0 * human_n * human_n))
+    low = float(max(0.0, center - margin))
+    high = float(min(1.0, center + margin))
+    return low, high
+
+
+def feature_group_importance(
+    importances: Sequence[float],
+    feature_names: Sequence[str],
+    n_spacy: int,
+    top_k: int = 10,
+) -> Dict[str, Any]:
+    """
+    Split XGBoost gain importances between spaCy (first n_spacy columns) and ELECTRA.
+    """
+    imp = np.asarray(importances, dtype=np.float64)
+    names = list(feature_names)
+    if imp.shape[0] != len(names):
+        raise ValueError(f"importances length {imp.shape[0]} != names length {len(names)}")
+    n_spacy = int(n_spacy)
+    spacy_gain = float(imp[:n_spacy].sum())
+    electra_gain = float(imp[n_spacy:].sum())
+    total = spacy_gain + electra_gain
+    if total <= 0:
+        spacy_share = electra_share = 0.0
+    else:
+        spacy_share = spacy_gain / total
+        electra_share = electra_gain / total
+    order = np.argsort(-imp)
+    top: List[Dict[str, Any]] = [
+        {"feature": names[i], "gain": float(imp[i])} for i in order[:top_k]
+    ]
+    return {
+        "spacy_gain": spacy_gain,
+        "electra_gain": electra_gain,
+        "spacy_share": spacy_share,
+        "electra_share": electra_share,
+        "top_features": top,
+    }
