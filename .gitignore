@@ -58,3 +58,5 @@ data/
 # local SSH keys (never commit)
 ssh-key-pair.txt
 ssh-key-pair.txt.pub
+# local pip wheel cache (offline installs)
+pip-wheels/
