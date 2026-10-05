@@ -217,19 +217,22 @@ bawe_path = RAW_HUMAN_DIR / 'bawe_dataset.csv'
 df = clean_bawe_dataset(bawe_path, PROCESSED_HUMAN_DIR, sample_size=None)
 ```
 
-### `combine_cleaned_datasets(processed_ai_dir, processed_human_dir, output_dir=None, output_name='combined_dataset.csv')`
+### `combine_cleaned_datasets(processed_ai_dir, processed_human_dir, output_dir=None, output_name='combined_dataset.csv', chunk_human=True, min_chunk_words=75, max_chunk_words=520, random_state=42)`
 Stacks the four cleaned datasets into one labeled table for modeling:
 1. Loads BAWE, MGTBench, Claude, and Gemini cleaned CSVs (skips any that are missing)
-2. Normalizes to columns `text`, `label`, `source`, `subject`
-3. Drops rows with empty text
-4. Saves `combined_dataset.csv` under `data/processed/` (or `output_dir`)
+2. Cuts each BAWE essay into passages whose lengths follow the AI word counts (`chunk_bawe_essays`; set `chunk_human=False` to keep whole essays)
+3. Normalizes to columns `text`, `label`, `source`, `subject`, `group_id`
+4. Drops rows with empty text
+5. Saves `combined_dataset.csv` under `data/processed/` (or `output_dir`)
 
-| source | label | text column |
-|--------|-------|-------------|
-| bawe | 0 | `text` |
-| mgtbench | 1 | `text` |
-| claude | 1 | `cleaned_text` |
-| gemini | 1 | `text` |
+| source | label | text column | group_id |
+|--------|-------|-------------|----------|
+| bawe | 0 | `text` | `bawe:<essay id>` (shared by all passages of one essay) |
+| mgtbench | 1 | `text` | `mgtbench:<file>:<id>` |
+| claude | 1 | `cleaned_text` | `claude:<row>` |
+| gemini | 1 | `text` | `gemini:<row>` |
+
+`data_splitting.ipynb` splits by `group_id`, so passages of one essay never land in two splits. Placeholder tags stay in this table; they are removed just before feature extraction.
 
 Use in notebook (after all four cleaners):
 ```python
@@ -249,6 +252,23 @@ df = combine_cleaned_datasets(PROCESSED_AI_DIR, PROCESSED_HUMAN_DIR, output_dir=
 | `[[COMPLEXITY]]` | O(n), Θ(n) |
 | `[[URL]]` | Links |
 | `[[MUSIC]]` | C-G-D-A chords |
+
+Tags are for cleaning and filtering only. The models never see them: human essays carry far more tags than AI texts, so a model could learn the tag instead of the writing.
+
+---
+
+## Text prep before modeling (`utils/text_prep.py`)
+
+These live outside the cleaning package so the GPU box can import them without the cleaning dependencies.
+
+### `strip_placeholders(text)`
+Removes every placeholder tag (including broken ones like `[[EQUATION]`, `[[[CODE]]`, `EQUATION]]`), then tidies what is left: empty `()`, doubled commas, spaces before punctuation, repeated whitespace. Runs on every row of both classes in `feature_extraction.ipynb`, right before spaCy and ELECTRA.
+
+### `count_words(text)`
+Word count that skips placeholder tags, so it matches what the models see.
+
+### `chunk_bawe_essays(bawe_df, target_word_counts, min_words=75, max_words=520, random_state=42)`
+Cuts each essay into sentence-aligned passages. Each passage aims for a length drawn from `target_word_counts` (the AI word counts); a tail shorter than `min_words` is dropped. Returns `id`, `text`, `subject`, `chunk_idx`. Called by `combine_cleaned_datasets`.
 
 ---
 
