@@ -864,13 +864,18 @@ def combine_cleaned_datasets(
     random_state=42,
 ):
     """
-    Stack the four cleaned datasets into one labeled table for modeling.
+    Stack the cleaned datasets into one labeled table for modeling.
 
     Output columns: text, label, source, subject, group_id
-    - label: 0 = human (BAWE), 1 = AI (MGTBench, Claude, Gemini)
-    - source: bawe | mgtbench | claude | gemini
+    - label: 0 = human (BAWE, MGTBench human), 1 = AI (MGTBench, Claude, Gemini)
+    - source: bawe | mgtbench_human | mgtbench | claude | gemini
     - group_id: rows that must land in the same split. Passages cut from one
-      BAWE essay share an id; every AI row gets its own.
+      BAWE essay share an id; every other row gets its own.
+
+    The MGTBench human texts are only added when their cleaned file exists. They
+    are the originals GPT-3.5 polished into the MGTBench AI rows, but we do not
+    yet link each original to its polished version, so the two can land in
+    different splits.
 
     BAWE essays are about ten times longer than the AI texts, so with
     chunk_human=True we cut each essay into passages whose lengths follow the
@@ -885,6 +890,11 @@ def combine_cleaned_datasets(
             'path': processed_human_dir / 'bawe_corpus_dataset_cleaned.csv',
             'label': 0,
             'source': 'bawe',
+        },
+        'mgtbench_human': {
+            'path': processed_human_dir / 'mgtbench_human_dataset_cleaned.csv',
+            'label': 0,
+            'source': 'mgtbench_human',
         },
         'mgtbench': {
             'path': processed_ai_dir / 'mgtbench_ai_dataset_cleaned.csv',
@@ -949,7 +959,9 @@ def combine_cleaned_datasets(
         frames[name] = rows
 
     if bawe_essays is not None:
-        ai_texts = pd.concat([f['text'] for f in frames.values()], ignore_index=True) if frames else []
+        # Only AI rows set the target lengths (the MGTBench human texts are not AI).
+        ai_frames = [f['text'] for f in frames.values() if (f['label'] == 1).all()]
+        ai_texts = pd.concat(ai_frames, ignore_index=True) if ai_frames else []
         if chunk_human and len(ai_texts):
             # Cut essays so human passages have the same length mix as the AI rows.
             ai_word_counts = [count_words(t) for t in ai_texts]
