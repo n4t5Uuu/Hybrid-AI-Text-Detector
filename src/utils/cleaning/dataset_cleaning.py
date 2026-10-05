@@ -327,6 +327,148 @@ def clean_mgtbench_ai_dataset(
     return df_processed
 
 
+def clean_mgtbench_human_dataset(
+    mgtbench_human_csv_path,
+    processed_dir,
+    sample_size=None,
+    density_threshold=0.4,
+    drop_foreign_rows=True,
+):
+    """
+    Clean the MGTBench human originals (text, meta, subject, file).
+
+    Same steps as the MGTBench AI cleaner: skip foreign-language rows, run
+    clean_pipeline, drop rows that are mostly placeholders, then save one CSV.
+    The raw rows have no id, so id is the row's position inside its own file
+    (the same numbering the polished AI rows use, which is not yet verified
+    as a pairing). Kept apart from combined_dataset.csv on purpose: this is
+    the separate robustness experiment, not the student-essay corpus.
+    sample_size is applied per subject.
+    """
+    mgtbench_human_csv_path = Path(mgtbench_human_csv_path)
+    processed_dir = Path(processed_dir)
+    if not mgtbench_human_csv_path.exists():
+        print(f"File not found at: {mgtbench_human_csv_path}")
+        return None
+
+    foreign_skip_counter["too_short"] = 0
+
+    print(f"Loading all rows from {mgtbench_human_csv_path.name}...")
+    df_raw = pd.read_csv(mgtbench_human_csv_path)
+    missing = {'text', 'subject', 'file'} - set(df_raw.columns)
+    if missing:
+        print(f"Missing columns {missing}: re-run the MGTBench human cell in data_ingestion.ipynb.")
+        return None
+    # Position inside the source file, taken before any sampling.
+    df_raw['id'] = df_raw.groupby('file').cumcount()
+
+    if sample_size:
+        df_raw = (
+            df_raw.groupby('subject', sort=False, group_keys=False)
+            .head(sample_size)
+            .reset_index(drop=True)
+        )
+        print(f"Using first {sample_size} rows per subject ({len(df_raw)} rows).")
+
+    ids = []
+    files = []
+    subjects = []
+    cleaned_texts = []
+    dropped_foreign = 0
+    dropped_empty = 0
+    dropped_density = 0
+    dropped_locally_dense = 0
+
+    print("Cleaning & filtering MGTBench human dataset...")
+    for _, row in tqdm(df_raw.iterrows(), total=len(df_raw), desc="Processing Rows"):
+        raw_text = str(row['text']).strip() if pd.notna(row['text']) else ''
+        if not raw_text:
+            dropped_empty += 1
+            continue
+
+        if drop_foreign_rows and contains_foreign_language(raw_text):
+            dropped_foreign += 1
+            continue
+
+        cleaned = clean_pipeline(raw_text).strip()
+        if not cleaned:
+            dropped_empty += 1
+            continue
+
+        if placeholder_density(cleaned) >= density_threshold:
+            dropped_density += 1
+            continue
+
+        if placeholder_density_windowed(cleaned):
+            dropped_locally_dense += 1
+            continue
+
+        ids.append(row['id'])
+        files.append(row['file'])
+        subjects.append(row['subject'])
+        cleaned_texts.append(cleaned)
+
+    df_processed = pd.DataFrame({
+        'id': ids,
+        'text': cleaned_texts,
+        'file': files,
+        'subject': subjects,
+    })
+
+    summary_data = {
+        'Metric': [
+            'Total Rows Loaded',
+            'Dropped (Foreign-Language Content)',
+            'Dropped (Empty After Cleaning)',
+            'Dropped (Too Placeholder-Dense)',
+            'Dropped (Locally Dense Cluster)',
+            'Total Rows Kept',
+            '[[EQUATION]] Tags Inserted',
+            '[[CODE]] Tags Inserted',
+            '[[CITATION]] Tags Inserted',
+            '[[COMPLEXITY]] Tags Inserted',
+            '[[URL]] Tags Inserted',
+            '[[MUSIC]] Tags Inserted',
+            'Sentences Skipped (Too Short to Detect Language)',
+            'Unique Subjects',
+        ],
+        'Count': [
+            len(df_raw),
+            dropped_foreign,
+            dropped_empty,
+            dropped_density,
+            dropped_locally_dense,
+            len(df_processed),
+            df_processed['text'].str.count(r'\[\[EQUATION\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[CODE\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[CITATION\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[COMPLEXITY\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[URL\]\]').sum() if len(df_processed) else 0,
+            df_processed['text'].str.count(r'\[\[MUSIC\]\]').sum() if len(df_processed) else 0,
+            foreign_skip_counter['too_short'],
+            df_processed['subject'].nunique() if len(df_processed) else 0,
+        ],
+    }
+
+    print("\n--- MGTBENCH HUMAN CLEANING SUMMARY ---")
+    ipd.display(pd.DataFrame(summary_data))
+
+    processed_dir.mkdir(parents=True, exist_ok=True)
+    filename = (
+        f"mgtbench_human_dataset_cleaned_{sample_size}.csv"
+        if sample_size
+        else "mgtbench_human_dataset_cleaned.csv"
+    )
+    output_path = processed_dir / filename
+    _save_cleaned_csv(df_processed, output_path)
+    print(f"\nSuccessfully saved cleaned dataset ({len(df_processed)} rows) to:\n  {output_path.resolve()}")
+
+    print("\n--- SAMPLE CLEANED DATA (FIRST 10 ROWS) ---")
+    ipd.display(df_processed.head(10))
+
+    return df_processed
+
+
 def clean_gemini_dataset(
     gemini_csv_path,
     processed_dir,
