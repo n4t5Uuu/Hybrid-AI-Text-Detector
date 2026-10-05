@@ -90,6 +90,65 @@ def stratified_train_val_test_split(
     return idx_train, idx_val, idx_test
 
 
+def link_polished_to_originals(
+    df: pd.DataFrame,
+    min_similarity: float = 0.3,
+    chunk_size: int = 1500,
+    human_source: str = "mgtbench_human",
+    ai_source: str = "mgtbench",
+) -> pd.Series:
+    """
+    Give each polished MGTBench text the group_id of the human original it came from.
+
+    The raw files share no id, so we match by wording: inside each subject we
+    compare every polished text with every human original and take the closest
+    one. If it is at least min_similarity close (TF-IDF cosine), the polished
+    text joins the original's group, so both land in the same split. Texts with
+    no close original keep their own group_id. Returns a new group_id column;
+    df is not changed. Run it before group_train_val_test_split.
+    """
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
+    from ..text_prep import strip_placeholders
+
+    group_ids = df["group_id"].astype(str).copy()
+    subjects = df["subject"].fillna("").astype(str)
+    stats = {"polished": 0, "linked": 0}
+
+    for subject in sorted(subjects[df["source"] == human_source].unique()):
+        in_subject = subjects == subject
+        ai_idx = df.index[in_subject & (df["source"] == ai_source)]
+        human_idx = df.index[in_subject & (df["source"] == human_source)]
+        if len(ai_idx) == 0 or len(human_idx) == 0:
+            continue
+
+        # Word weights learned from this subject only; tags are removed first
+        # so [[EQUATION]] and friends do not count as shared wording.
+        ai_text = df.loc[ai_idx, "text"].map(strip_placeholders)
+        human_text = df.loc[human_idx, "text"].map(strip_placeholders)
+        vectorizer = TfidfVectorizer(
+            stop_words="english", sublinear_tf=True, min_df=2, max_features=60000, dtype=np.float32
+        )
+        vectorizer.fit(pd.concat([ai_text, human_text]))
+        x_ai = vectorizer.transform(ai_text)
+        x_human = vectorizer.transform(human_text)
+        human_groups = group_ids.loc[human_idx].to_numpy()
+
+        # Closest original for each polished text, a chunk at a time to save memory.
+        for start in range(0, len(ai_idx), chunk_size):
+            similarity = (x_ai[start:start + chunk_size] @ x_human.T).toarray()
+            best = similarity.argmax(axis=1)
+            close_enough = similarity[np.arange(len(best)), best] >= min_similarity
+            rows = ai_idx[start:start + chunk_size][close_enough]
+            group_ids.loc[rows] = human_groups[best[close_enough]]
+            stats["linked"] += int(close_enough.sum())
+        stats["polished"] += len(ai_idx)
+
+    share = stats["linked"] / stats["polished"] if stats["polished"] else 0.0
+    print(f"Linked {stats['linked']:,} of {stats['polished']:,} polished texts ({share:.0%}) to an original.")
+    return group_ids
+
+
 def group_train_val_test_split(
     group_ids: Sequence,
     labels: Sequence,
@@ -103,8 +162,10 @@ def group_train_val_test_split(
     Same 70 / 15 / 15 split, but rows that share a group_id always land together.
 
     Passages cut from one BAWE essay share a group_id, so an essay can never sit
-    in train and test at once. We split the groups with
-    stratified_train_val_test_split, then hand back row indices.
+    in train and test at once; the same goes for an MGTBench original and its
+    polished text once link_polished_to_originals has put them in one group.
+    We split the groups with stratified_train_val_test_split, then hand back
+    row indices.
     """
     n_rows = len(group_ids)
     if len(labels) != n_rows:
@@ -119,11 +180,13 @@ def group_train_val_test_split(
             .to_numpy(),
         }
     )
-    if (frame.groupby("group")["label"].nunique() > 1).any():
-        raise ValueError("Every row in a group must have the same label.")
+    # A group that holds both human and AI rows (an original plus its polished
+    # version) gets its own label, 2, so those pairs are spread across splits too.
+    group_label = frame.groupby("group")["label"].agg(lambda s: s.iloc[0] if s.nunique() == 1 else 2)
 
     # One row per group, then the usual stratified split on those groups.
     groups = frame.drop_duplicates("group").reset_index(drop=True)
+    groups["label"] = groups["group"].map(group_label)
     g_train, g_val, g_test = stratified_train_val_test_split(
         len(groups),
         groups["label"].tolist(),
