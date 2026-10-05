@@ -18,6 +18,7 @@ from .cleaning_methods import (
     strip_surrogate_characters,
 )
 from .placeholder_density import placeholder_density, placeholder_density_windowed
+from ..text_prep import chunk_bawe_essays, count_words
 
 
 def _save_cleaned_csv(df, output_path):
@@ -703,18 +704,35 @@ def clean_bawe_dataset(
     return df_processed
 
 
+def _row_group_ids(source, df):
+    """One id per row: source:file:id when the cleaned CSV has both, else the row position."""
+    if 'file' in df.columns and 'id' in df.columns:
+        return (source + ':' + df['file'].astype(str) + ':' + df['id'].astype(str)).tolist()
+    return [f'{source}:{i}' for i in range(len(df))]
+
+
 def combine_cleaned_datasets(
     processed_ai_dir,
     processed_human_dir,
     output_dir=None,
     output_name='combined_dataset.csv',
+    chunk_human=True,
+    min_chunk_words=75,
+    max_chunk_words=520,
+    random_state=42,
 ):
     """
     Stack the four cleaned datasets into one labeled table for modeling.
 
-    Output columns: text, label, source, subject
+    Output columns: text, label, source, subject, group_id
     - label: 0 = human (BAWE), 1 = AI (MGTBench, Claude, Gemini)
     - source: bawe | mgtbench | claude | gemini
+    - group_id: rows that must land in the same split. Passages cut from one
+      BAWE essay share an id; every AI row gets its own.
+
+    BAWE essays are about ten times longer than the AI texts, so with
+    chunk_human=True we cut each essay into passages whose lengths follow the
+    AI word counts (see chunk_bawe_essays). Set it to False to keep whole essays.
     """
     processed_ai_dir = Path(processed_ai_dir)
     processed_human_dir = Path(processed_human_dir)
@@ -743,7 +761,8 @@ def combine_cleaned_datasets(
         },
     }
 
-    frames = []
+    frames = {}
+    bawe_essays = None
     missing = []
     for name, meta in sources.items():
         path = meta['path']
@@ -759,6 +778,7 @@ def combine_cleaned_datasets(
                 'label': meta['label'],
                 'source': meta['source'],
                 'subject': '',
+                'group_id': _row_group_ids(name, df),
             })
         elif name == 'gemini':
             rows = pd.DataFrame({
@@ -766,15 +786,54 @@ def combine_cleaned_datasets(
                 'label': meta['label'],
                 'source': meta['source'],
                 'subject': df['prompt_name'].fillna('').astype(str) if 'prompt_name' in df.columns else '',
+                'group_id': _row_group_ids(name, df),
             })
+        elif name == 'bawe':
+            # Hold the essays back: how we cut them depends on the AI lengths below.
+            bawe_essays = pd.DataFrame({
+                'id': df['id'].astype(str),
+                'text': df['text'].astype(str),
+                'subject': df['subject'].fillna('').astype(str),
+            })
+            continue
         else:
             rows = pd.DataFrame({
                 'text': df['text'].astype(str),
                 'label': meta['label'],
                 'source': meta['source'],
                 'subject': df['subject'].fillna('').astype(str) if 'subject' in df.columns else '',
+                'group_id': _row_group_ids(name, df),
             })
-        frames.append(rows)
+        frames[name] = rows
+
+    if bawe_essays is not None:
+        ai_texts = pd.concat([f['text'] for f in frames.values()], ignore_index=True) if frames else []
+        if chunk_human and len(ai_texts):
+            # Cut essays so human passages have the same length mix as the AI rows.
+            ai_word_counts = [count_words(t) for t in ai_texts]
+            passages = chunk_bawe_essays(
+                bawe_essays,
+                ai_word_counts,
+                min_words=min_chunk_words,
+                max_words=max_chunk_words,
+                random_state=random_state,
+            )
+            print(
+                f"BAWE chunking: {len(bawe_essays):,} essays -> {len(passages):,} passages "
+                f"(median {passages['text'].map(count_words).median():.0f} words vs "
+                f"{pd.Series(ai_word_counts).median():.0f} for AI rows)"
+            )
+        else:
+            if chunk_human:
+                print('No AI datasets found, so BAWE essays are kept whole.')
+            passages = bawe_essays
+        frames['bawe'] = pd.DataFrame({
+            'text': passages['text'],
+            'label': sources['bawe']['label'],
+            'source': sources['bawe']['source'],
+            'subject': passages['subject'],
+            'group_id': 'bawe:' + passages['id'],
+        })
 
     if missing:
         print('Missing cleaned files (run the per-dataset cells first):')
@@ -784,9 +843,10 @@ def combine_cleaned_datasets(
         print('No cleaned datasets found to combine.')
         return None
 
-    df_combined = pd.concat(frames, ignore_index=True)
+    # Keep the usual row order: bawe, mgtbench, claude, gemini.
+    df_combined = pd.concat([frames[name] for name in sources if name in frames], ignore_index=True)
     df_combined = df_combined[df_combined['text'].str.strip().astype(bool)]
-    df_combined = df_combined[['text', 'label', 'source', 'subject']]
+    df_combined = df_combined[['text', 'label', 'source', 'subject', 'group_id']]
 
     summary = df_combined.groupby(['source', 'label'], as_index=False).size()
     summary.columns = ['source', 'label', 'rows']
