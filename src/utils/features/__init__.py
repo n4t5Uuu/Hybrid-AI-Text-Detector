@@ -10,12 +10,21 @@ from .spacy_features import (
     save_spacy_features,
 )
 from .data_splitting import (
+    group_train_val_test_split,
     load_split_indices,
     save_split_artifacts,
     split_balance_table,
     stratified_train_val_test_split,
 )
-from .evaluate import classification_report_row, describe_fit, hybrid_cv_score
+from .evaluate import (
+    classification_report_row,
+    describe_fit,
+    fpr_cluster_ci,
+    fpr_wilson_interval,
+    hybrid_cv_score,
+    length_baseline_report,
+    per_source_report,
+)
 from .split_and_train import (
     features_on_gpu,
     fit_tfidf_on_train,
@@ -39,6 +48,7 @@ __all__ = [
     "fuse_spacy_electra",
     "save_hybrid_features",
     "stratified_train_val_test_split",
+    "group_train_val_test_split",
     "save_split_artifacts",
     "load_split_indices",
     "split_balance_table",
@@ -53,4 +63,8 @@ __all__ = [
     "classification_report_row",
     "hybrid_cv_score",
     "describe_fit",
+    "fpr_wilson_interval",
+    "fpr_cluster_ci",
+    "length_baseline_report",
+    "per_source_report",
 ]
