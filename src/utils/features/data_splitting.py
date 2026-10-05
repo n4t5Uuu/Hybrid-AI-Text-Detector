@@ -90,6 +90,62 @@ def stratified_train_val_test_split(
     return idx_train, idx_val, idx_test
 
 
+def group_train_val_test_split(
+    group_ids: Sequence,
+    labels: Sequence,
+    subjects: Optional[Sequence] = None,
+    train_size: float = 0.7,
+    val_size: float = 0.15,
+    test_size: float = 0.15,
+    random_state: int = 42,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Same 70 / 15 / 15 split, but rows that share a group_id always land together.
+
+    Passages cut from one BAWE essay share a group_id, so an essay can never sit
+    in train and test at once. We split the groups with
+    stratified_train_val_test_split, then hand back row indices.
+    """
+    n_rows = len(group_ids)
+    if len(labels) != n_rows:
+        raise ValueError(f"labels length {len(labels)} != group_ids length {n_rows}")
+    frame = pd.DataFrame(
+        {
+            "group": pd.Series(group_ids).astype(str).to_numpy(),
+            "label": pd.Series(labels).to_numpy(),
+            "subject": pd.Series(subjects if subjects is not None else [""] * n_rows)
+            .fillna("")
+            .astype(str)
+            .to_numpy(),
+        }
+    )
+    if (frame.groupby("group")["label"].nunique() > 1).any():
+        raise ValueError("Every row in a group must have the same label.")
+
+    # One row per group, then the usual stratified split on those groups.
+    groups = frame.drop_duplicates("group").reset_index(drop=True)
+    g_train, g_val, g_test = stratified_train_val_test_split(
+        len(groups),
+        groups["label"].tolist(),
+        groups["subject"].tolist(),
+        train_size=train_size,
+        val_size=val_size,
+        test_size=test_size,
+        random_state=random_state,
+    )
+
+    # Send every row to the split its group landed in.
+    split_of_group = pd.Series("train", index=groups["group"])
+    split_of_group.iloc[g_val] = "val"
+    split_of_group.iloc[g_test] = "test"
+    row_split = frame["group"].map(split_of_group).to_numpy()
+    return (
+        np.flatnonzero(row_split == "train"),
+        np.flatnonzero(row_split == "val"),
+        np.flatnonzero(row_split == "test"),
+    )
+
+
 def split_sizes(n_rows: int, train_size: float = 0.7, val_size: float = 0.15) -> Dict[str, int]:
     """Rough counts for reporting — actual sizes come from the stratified split."""
     test_size = 1.0 - train_size - val_size
@@ -232,7 +288,7 @@ def save_split_artifacts(
         assignment["split"] = "train"
         assignment.loc[idx_val, "split"] = "val"
         assignment.loc[idx_test, "split"] = "test"
-        for col in ("label", "source", "subject"):
+        for col in ("label", "source", "subject", "group_id"):
             if col in df.columns:
                 assignment[col] = df[col].values
         assignment.to_csv(output_dir / "split_assignments.csv", index=False)
