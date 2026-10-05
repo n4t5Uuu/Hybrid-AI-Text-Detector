@@ -218,11 +218,11 @@ df = clean_bawe_dataset(bawe_path, PROCESSED_HUMAN_DIR, sample_size=None)
 ```
 
 ### `clean_mgtbench_human_dataset(mgtbench_human_csv_path, processed_dir, sample_size=None, density_threshold=0.4, drop_foreign_rows=True)`
-Cleans the MGTBench human originals (`text`, `meta`, `subject`, `file` from `data_ingestion.ipynb`) with the same steps as the MGTBench AI cleaner. Output columns are `id` (row position inside its file, since the raw rows have none), `text`, `file`, `subject`, saved as `mgtbench_human_dataset_cleaned.csv`. It is **not** read by `combine_cleaned_datasets`; these texts are for a separate robustness experiment.
+Cleans the MGTBench human originals (`text`, `meta`, `subject`, `file` from `data_ingestion.ipynb`) with the same steps as the MGTBench AI cleaner. Output columns are `id` (row position inside its file, since the raw rows have none), `text`, `file`, `subject`, saved as `mgtbench_human_dataset_cleaned.csv`. `combine_cleaned_datasets` adds it as label 0 (source `mgtbench_human`) when the file exists.
 
 ### `combine_cleaned_datasets(processed_ai_dir, processed_human_dir, output_dir=None, output_name='combined_dataset.csv', chunk_human=True, min_chunk_words=75, max_chunk_words=520, random_state=42)`
-Stacks the four cleaned datasets into one labeled table for modeling:
-1. Loads BAWE, MGTBench, Claude, and Gemini cleaned CSVs (skips any that are missing)
+Stacks the cleaned datasets into one labeled table for modeling:
+1. Loads BAWE, MGTBench human, MGTBench, Claude, and Gemini cleaned CSVs (skips any that are missing)
 2. Cuts each BAWE essay into passages whose lengths follow the AI word counts (`chunk_bawe_essays`; set `chunk_human=False` to keep whole essays)
 3. Normalizes to columns `text`, `label`, `source`, `subject`, `group_id`
 4. Drops rows with empty text
@@ -231,11 +231,12 @@ Stacks the four cleaned datasets into one labeled table for modeling:
 | source | label | text column | group_id |
 |--------|-------|-------------|----------|
 | bawe | 0 | `text` | `bawe:<essay id>` (shared by all passages of one essay) |
+| mgtbench_human | 0 | `text` | `mgtbench_human:<file>:<id>` |
 | mgtbench | 1 | `text` | `mgtbench:<file>:<id>` |
 | claude | 1 | `cleaned_text` | `claude:<row>` |
 | gemini | 1 | `text` | `gemini:<row>` |
 
-`data_splitting.ipynb` splits by `group_id`, so passages of one essay never land in two splits. Placeholder tags stay in this table; they are removed just before feature extraction.
+`data_splitting.ipynb` splits by `group_id`, so passages of one essay never land in two splits. The MGTBench human originals are not matched to their polished AI versions yet, so an original and its polished text can land in different splits. Placeholder tags stay in this table; they are removed just before feature extraction.
 
 Use in notebook (after all four cleaners):
 ```python
