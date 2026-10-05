@@ -217,6 +217,9 @@ bawe_path = RAW_HUMAN_DIR / 'bawe_dataset.csv'
 df = clean_bawe_dataset(bawe_path, PROCESSED_HUMAN_DIR, sample_size=None)
 ```
 
+### `clean_mgtbench_human_dataset(mgtbench_human_csv_path, processed_dir, sample_size=None, density_threshold=0.4, drop_foreign_rows=True)`
+Cleans the MGTBench human originals (`text`, `meta`, `subject`, `file` from `data_ingestion.ipynb`) with the same steps as the MGTBench AI cleaner. Output columns are `id` (row position inside its file, since the raw rows have none), `text`, `file`, `subject`, saved as `mgtbench_human_dataset_cleaned.csv`. It is **not** read by `combine_cleaned_datasets`; these texts are for a separate robustness experiment.
+
 ### `combine_cleaned_datasets(processed_ai_dir, processed_human_dir, output_dir=None, output_name='combined_dataset.csv', chunk_human=True, min_chunk_words=75, max_chunk_words=520, random_state=42)`
 Stacks the four cleaned datasets into one labeled table for modeling:
 1. Loads BAWE, MGTBench, Claude, and Gemini cleaned CSVs (skips any that are missing)
