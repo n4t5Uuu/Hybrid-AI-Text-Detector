@@ -873,9 +873,11 @@ def combine_cleaned_datasets(
       BAWE essay share an id; every other row gets its own.
 
     The MGTBench human texts are only added when their cleaned file exists. They
-    are the originals GPT-3.5 polished into the MGTBench AI rows, but we do not
-    yet link each original to its polished version, so the two can land in
-    different splits.
+    are the originals GPT-3.5 polished into the MGTBench AI rows. Exact duplicate
+    originals are dropped, and each original is cut to an AI-like length (its
+    opening passage is kept). Linking each original to its polished version
+    happens later, in data_splitting.ipynb. Identical texts left after combining
+    are dropped as well.
 
     BAWE essays are about ten times longer than the AI texts, so with
     chunk_human=True we cut each essay into passages whose lengths follow the
@@ -915,6 +917,7 @@ def combine_cleaned_datasets(
 
     frames = {}
     bawe_essays = None
+    mgtbench_human = None
     missing = []
     for name, meta in sources.items():
         path = meta['path']
@@ -948,6 +951,19 @@ def combine_cleaned_datasets(
                 'subject': df['subject'].fillna('').astype(str),
             })
             continue
+        elif name == 'mgtbench_human':
+            # Hold the originals back too: they are cut to AI lengths below.
+            # The same text can appear twice in the raw files; keep the first copy
+            # so a duplicate can never sit in both train and test.
+            mgtbench_human = pd.DataFrame({
+                'id': _row_group_ids(name, df),
+                'text': df['text'].astype(str),
+                'subject': df['subject'].fillna('').astype(str) if 'subject' in df.columns else '',
+            })
+            n_before = len(mgtbench_human)
+            mgtbench_human = mgtbench_human.drop_duplicates('text').reset_index(drop=True)
+            print(f"MGTBench human: dropped {n_before - len(mgtbench_human):,} exact duplicate originals.")
+            continue
         else:
             rows = pd.DataFrame({
                 'text': df['text'].astype(str),
@@ -958,10 +974,43 @@ def combine_cleaned_datasets(
             })
         frames[name] = rows
 
+    # Only AI rows set the target lengths for the human passages.
+    ai_frames = [f['text'] for f in frames.values() if (f['label'] == 1).all()]
+    ai_texts = pd.concat(ai_frames, ignore_index=True) if ai_frames else []
+
+    if mgtbench_human is not None:
+        if chunk_human and len(ai_texts):
+            # The originals are about twice as long as the polished texts (History,
+            # Physics and Statistics run to over 800 words), so cut each to an AI-like
+            # length and keep its opening passage. One passage per original keeps the
+            # human count steady and the group_id the original's own.
+            ai_word_counts = [count_words(t) for t in ai_texts]
+            passages = chunk_bawe_essays(
+                mgtbench_human,
+                ai_word_counts,
+                min_words=min_chunk_words,
+                max_words=max_chunk_words,
+                random_state=random_state,
+            )
+            passages = passages[passages['chunk_idx'] == 0]
+            print(
+                f"MGTBench human cutting: {len(mgtbench_human):,} originals -> {len(passages):,} passages "
+                f"(median {passages['text'].map(count_words).median():.0f} words vs "
+                f"{pd.Series(ai_word_counts).median():.0f} for AI rows)"
+            )
+        else:
+            if chunk_human:
+                print('No AI datasets found, so MGTBench human originals are kept whole.')
+            passages = mgtbench_human
+        frames['mgtbench_human'] = pd.DataFrame({
+            'text': passages['text'].to_numpy(),
+            'label': sources['mgtbench_human']['label'],
+            'source': sources['mgtbench_human']['source'],
+            'subject': passages['subject'].to_numpy(),
+            'group_id': passages['id'].to_numpy(),
+        })
+
     if bawe_essays is not None:
-        # Only AI rows set the target lengths (the MGTBench human texts are not AI).
-        ai_frames = [f['text'] for f in frames.values() if (f['label'] == 1).all()]
-        ai_texts = pd.concat(ai_frames, ignore_index=True) if ai_frames else []
         if chunk_human and len(ai_texts):
             # Cut essays so human passages have the same length mix as the AI rows.
             ai_word_counts = [count_words(t) for t in ai_texts]
@@ -1000,6 +1049,10 @@ def combine_cleaned_datasets(
     # Keep the usual row order: bawe, mgtbench, claude, gemini.
     df_combined = pd.concat([frames[name] for name in sources if name in frames], ignore_index=True)
     df_combined = df_combined[df_combined['text'].str.strip().astype(bool)]
+    # A few identical texts also sit inside the other sources; keep the first copy.
+    n_before = len(df_combined)
+    df_combined = df_combined.drop_duplicates('text').reset_index(drop=True)
+    print(f"Dropped {n_before - len(df_combined):,} more exact duplicate texts after combining.")
     df_combined = df_combined[['text', 'label', 'source', 'subject', 'group_id']]
 
     summary = df_combined.groupby(['source', 'label'], as_index=False).size()
