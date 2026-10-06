@@ -776,7 +776,7 @@ def merge_continuous_equations(text, tag='[[EQUATION]]'):
         conn = (
             r'(?:\s*(?:'
             r'[\+\-\*/×÷=±_^{}$\\]|'
-            r'\d+(?:\.\d+)?|'
+            r'\d+(?:\.\d+)?(?!\d)|'
             rf'{TRIG_PATTERN}|'
             rf'd[{GREEK_CHARS}A-Za-z][A-Za-z0-9]*/d[A-Za-z]|'
             r'2a|4ac|4a|-b|bx|ac|bc|cx|ax|ab|'
