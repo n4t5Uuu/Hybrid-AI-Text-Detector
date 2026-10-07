@@ -137,38 +137,7 @@ Make sure **never** to force-commit any of the following ignored paths:
 
 End-to-end pipeline for the thesis experiment and the deployed web application. The hybrid path (spaCy + ELECTRA + late fusion + XGBoost) is the proposed model; three baselines use the same XGBoost training procedure on different feature sets only.
 
-```
- 1. DATA INGESTION
-    BAWE Corpus (Human, label 0)  |  GPT-3.5, Claude 3/3.5, Gemini-Pro (AI, label 1)
-                    ↓
- 2. TEXT PREPROCESSING & COMBINE
-    clean_pipeline per dataset → one unsplit table: text | source | label (~9,000 rows)
-    (see Preprocessing below; tokenization is NOT this step)
-                    ↓
-         ┌──────────┴──────────┐
-         ↓                     ↓
- 3. FEATURE EXTRACTION    STANDALONE BASELINES (same combined table, skip fusion)
-    spaCy → S (N-dim)      spaCy-only → S
-    ELECTRA → E (768-d)    ELECTRA-only → E
-                           XGBoost-only → R (preprocessed-text / TF-IDF features)
-         ↓
- 4. LATE FUSION (hybrid only)
-    H = [S | E]  →  N + 768 dimensional vector (hybrid XGBoost input X)
-                    ↓
- 5. STRATIFIED SPLIT (once, after features)
-    70% train | 15% validation (held out) | 15% test
-    same row-indices on H, S, E, and R
-                    ↓
- 6. MODEL DEVELOPMENT (all four models — identical procedure, different X)
-    Grid search + 5-fold CV on 70% → pick best params → refit on full 70% → score on 15% val
-    Hybrid: X=H  |  spaCy-only: X=S  |  ELECTRA-only: X=E  |  XGBoost-only: X=R
-                    ↓
- 7. OUTPUTS & INTERPRETATION
-    Evaluate all four on the SAME 15% test → Table 6 metrics → paired t-test on FPR (α=0.05)
-    Per-text: predict_proba() → Human / Mixed / AI score bands (see below)
-
-    Web app (deployment): single text → clean → spaCy + ELECTRA → fuse → saved hybrid XGBoost → score
-```
+![System Architecture](docs/system-architecture.png)
 
 ### Preprocessing (`clean_pipeline`)
 
