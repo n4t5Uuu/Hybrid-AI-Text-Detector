@@ -2,8 +2,10 @@
 70 / 15 / 15 train–val–test split for the combined essay table.
 
 Keeps human vs AI balance and subject (discipline) mix similar in each fold.
-`data_splitting.ipynb` writes indices under data/processed/splits/; training
-and feature notebooks reuse those row picks on **H**, **S**, **E**, and **R**.
+`data_splitting.ipynb` writes indices under data/processed/splits/. It splits
+the combined table only; feature extraction runs on the same whole table on its
+own, and the model notebooks use these row picks to slice **H**, **S**, **E**,
+and **R**.
 """
 
 from __future__ import annotations
