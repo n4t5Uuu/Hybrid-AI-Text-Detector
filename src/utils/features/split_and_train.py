@@ -13,9 +13,11 @@ from typing import Any, Dict, Optional, Sequence, Tuple
 
 import joblib
 import numpy as np
+import pandas as pd
+import scipy.sparse as sp
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import make_scorer
-from sklearn.model_selection import GridSearchCV, ParameterGrid, StratifiedKFold
+from sklearn.model_selection import GridSearchCV, ParameterGrid, StratifiedGroupKFold
 from xgboost import XGBClassifier
 
 from .evaluate import classification_report_row, hybrid_cv_score
@@ -99,7 +101,15 @@ def downsample_ai_train(
 
 
 def features_on_gpu(x: np.ndarray):
-    """Copy a feature matrix onto the GPU so XGBoost does not fall back to CPU data."""
+    """
+    Copy a feature matrix onto the GPU so XGBoost does not fall back to CPU data.
+
+    Sparse input (the TF-IDF matrix) stays a float32 CSR matrix: densifying it
+    would take several GB, and XGBoost moves CSR data to the GPU by itself.
+    """
+    if sp.issparse(x):
+        return x.tocsr().astype(np.float32)
+
     import cupy as cp
 
     return cp.asarray(np.ascontiguousarray(x, dtype=np.float32))
@@ -161,15 +171,21 @@ def train_xgboost_gpu(
     x_val: Optional[np.ndarray] = None,
     y_val: Optional[np.ndarray] = None,
     early_stopping_rounds: int = 30,
+    groups: Optional[Sequence] = None,
 ) -> Tuple[XGBClassifier, Any]:
     """
-    Pick hyperparameters on the validation slice, not on a refit of every train row.
+    Tune and fit one XGBoost model; every model in the study goes through here.
 
-    Each combo may grow up to n_estimators trees and stops when validation
-    logloss has not improved for early_stopping_rounds rounds. The winner is
-    the combo with the highest validation ROC-AUC minus FPR. A depth-1 model
-    replaces it when its validation FPR is within half a point, so extra trees
-    are not kept just to memorize training humans. The test slice is not used.
+    Without x_val / y_val this is the procedure in the paper: grid search with
+    cv_folds-fold cross-validation on the training rows, then the winner is
+    refit on all of them. Pass groups (one id per training row) so rows that
+    belong together never straddle two folds. The score is ROC-AUC minus FPR.
+
+    With x_val / y_val, hyperparameters are picked on the validation slice
+    instead: each combo may grow up to n_estimators trees and stops when
+    validation logloss has not improved for early_stopping_rounds rounds. A
+    depth-1 model replaces the winner when its validation FPR is within half a
+    point. The test slice is never used here.
     """
     if param_grid is None:
         param_grid = default_xgb_param_grid()
@@ -180,7 +196,7 @@ def train_xgboost_gpu(
     device = "cuda" if use_cuda else "cpu"
     if x_val is None:
         return _train_with_train_cv(
-            x_train, y_train, param_grid, cv_folds, random_state, device, use_cuda
+            x_train, y_train, param_grid, cv_folds, random_state, device, use_cuda, groups
         )
     return _train_with_validation(
         x_train,
@@ -203,8 +219,23 @@ def _train_with_train_cv(
     random_state: int,
     device: str,
     use_cuda: bool,
+    groups: Optional[Sequence] = None,
 ) -> Tuple[XGBClassifier, GridSearchCV]:
-    """Fallback when no validation matrix is passed (older notebooks)."""
+    """
+    Grid search with grouped, stratified k-fold CV, then refit on all train rows.
+
+    Rows sharing a group id (passages of one essay, an original and its
+    polished text) always sit in the same fold, so a fold's score is never
+    inflated by a near-copy of a row it trained on.
+    """
+    if groups is None:
+        raise ValueError(
+            "Cross-validation needs groups (one id per training row) so related rows "
+            "stay in the same fold."
+        )
+    groups = np.asarray(groups)
+    if len(groups) != len(y_train):
+        raise ValueError(f"groups length {len(groups)} != y_train length {len(y_train)}")
     x_fit = features_on_gpu(x_train) if use_cuda else x_train
     base = XGBClassifier(
         objective="binary:logistic",
@@ -214,7 +245,7 @@ def _train_with_train_cv(
         n_jobs=1,
         random_state=random_state,
     )
-    cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=random_state)
+    cv = StratifiedGroupKFold(n_splits=cv_folds, shuffle=True, random_state=random_state)
     search = GridSearchCV(
         base,
         param_grid,
@@ -223,8 +254,87 @@ def _train_with_train_cv(
         n_jobs=1,
         verbose=1,
     )
-    search.fit(x_fit, y_train)
+    search.fit(x_fit, y_train, groups=groups)
     return search.best_estimator_, search
+
+
+def select_on_validation(
+    search: GridSearchCV,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+    top_k: int = 3,
+    random_state: int = 42,
+    use_cuda: bool = True,
+) -> Tuple[XGBClassifier, Dict[str, Any], pd.DataFrame]:
+    """
+    Compare the top cross-validated settings on the validation slice and keep the best.
+
+    The top_k settings from the grid search are each fit on all train rows (the
+    first one already is, by GridSearchCV's refit). The validation slice only
+    chooses between them, using the same ROC-AUC minus FPR score as the CV;
+    nothing is tuned or refit on it. Ties go to the better CV rank.
+
+    Returns the chosen model, its params, and a table with one row per
+    candidate (CV rank, params, CV mean/std, validation numbers, `selected`).
+    """
+    results = getattr(search, "cv_results_", {})
+    if "params" not in results or not hasattr(search, "best_index_"):
+        raise ValueError("Pass the GridSearchCV object returned by the cross-validated training path.")
+
+    mean_scores = np.asarray(results["mean_test_score"], dtype=float)
+    # Best setting first (its model is already refit), then the rest by CV score.
+    rest = [i for i in np.argsort(-mean_scores, kind="stable") if i != search.best_index_]
+    order = ([int(search.best_index_)] + [int(i) for i in rest])[: max(1, int(top_k))]
+
+    device = "cuda" if use_cuda else "cpu"
+    x_eval = features_on_gpu(x_val) if use_cuda else x_val
+    y_eval = np.asarray(y_val)
+    x_fit = None  # built lazily: only needed when a runner-up has to be refit
+
+    models, rows = [], []
+    for cv_rank, i in enumerate(order, start=1):
+        params = dict(results["params"][i])
+        if i == search.best_index_:
+            model = search.best_estimator_
+        else:
+            if x_fit is None:
+                x_fit = features_on_gpu(x_train) if use_cuda else x_train
+            model = XGBClassifier(
+                objective="binary:logistic",
+                eval_metric="logloss",
+                device=device,
+                tree_method="hist",
+                n_jobs=1,
+                random_state=random_state,
+                **params,
+            )
+            model.fit(x_fit, y_train)
+        proba = model.predict_proba(x_eval)[:, 1]
+        report = classification_report_row(y_eval, proba)
+        models.append((model, params))
+        rows.append(
+            {
+                "cv_rank": cv_rank,
+                **{f"param_{key}": value for key, value in params.items()},
+                "cv_mean": float(mean_scores[i]),
+                "cv_std": float(results["std_test_score"][i]),
+                "val_roc_auc": report["roc_auc"],
+                "val_fpr": report["fpr"],
+                "val_score": float(report["roc_auc"] - report["fpr"]),
+            }
+        )
+
+    table = pd.DataFrame(rows)
+    chosen = int(np.argmax(table["val_score"].to_numpy()))  # first max = best CV rank on ties
+    table["selected"] = np.arange(len(table)) == chosen
+    model, params = models[chosen]
+    print(
+        f"Validation picked CV rank {chosen + 1} of {len(table)}: "
+        f"score {table.loc[chosen, 'val_score']:.4f}, FPR {table.loc[chosen, 'val_fpr']:.3%}"
+    )
+    return model, params, table
 
 
 def _train_with_validation(
