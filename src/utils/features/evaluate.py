@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 from sklearn.metrics import (
     accuracy_score,
     confusion_matrix,
@@ -307,3 +308,84 @@ def feature_group_importance(
         "electra_share": electra_share,
         "top_features": top,
     }
+
+def fold_fpr_table(
+    y_true: Sequence[int],
+    probs: Dict[str, Sequence[float]],
+    groups: Sequence,
+    n_folds: int = 10,
+    threshold: float = 0.5,
+    random_state: int = 42,
+) -> pd.DataFrame:
+    """
+    FPR of every model on the same disjoint folds of the human test rows.
+
+    The paired t-test needs repeated paired measurements, and one test slice
+    gives each model a single FPR. So the human test rows are cut into
+    n_folds folds by group id (all passages of an essay, and an original with
+    its polished text, share a fold) and each model's FPR is taken per fold.
+    Every model sees exactly the same folds. Returns one row per fold, one
+    column per model, plus n_human (passages in the fold).
+    """
+    y_true = np.asarray(y_true).astype(int)
+    groups = np.asarray(groups)
+    human = y_true == 0
+    unique_groups = np.unique(groups[human])
+    if len(unique_groups) < n_folds:
+        raise ValueError(f"Only {len(unique_groups)} human groups for {n_folds} folds.")
+
+    rng = np.random.default_rng(random_state)
+    shuffled = rng.permutation(unique_groups)
+    fold_of_group = {g: i % n_folds for i, g in enumerate(shuffled)}
+    fold = np.full(len(y_true), -1)
+    fold[human] = [fold_of_group[g] for g in groups[human]]
+
+    rows = []
+    for k in range(n_folds):
+        mask = fold == k
+        row = {"n_human": int(mask.sum())}
+        for name, prob in probs.items():
+            row[name] = float((np.asarray(prob, dtype=float)[mask] >= threshold).mean())
+        rows.append(row)
+    table = pd.DataFrame(rows, index=pd.RangeIndex(1, n_folds + 1, name="fold"))
+    return table[[c for c in table.columns if c != "n_human"] + ["n_human"]]
+
+
+def paired_fpr_ttest(
+    fold_table: pd.DataFrame,
+    hybrid: str = "hybrid",
+    alpha: float = 0.05,
+) -> pd.DataFrame:
+    """
+    Paired t-test on per-fold FPR, the hybrid against each baseline.
+
+    H0: no difference in FPR. The two-sided p matches the paper's Ha
+    ("differs"); the one-sided p asks whether the hybrid is lower. If every
+    fold difference is exactly zero the test is undefined, so it is reported
+    as no difference (p = 1).
+    """
+    baselines = [c for c in fold_table.columns if c not in (hybrid, "n_human")]
+    rows = []
+    for name in baselines:
+        a = fold_table[hybrid].to_numpy(dtype=float)
+        b = fold_table[name].to_numpy(dtype=float)
+        if np.allclose(a - b, 0.0):
+            t_stat, p_two, p_less = 0.0, 1.0, 1.0
+        else:
+            t_stat, p_two = stats.ttest_rel(a, b)
+            p_less = stats.ttest_rel(a, b, alternative="less").pvalue
+        rows.append(
+            {
+                "baseline": name,
+                "hybrid_mean_fpr": float(a.mean()),
+                "baseline_mean_fpr": float(b.mean()),
+                "mean_diff": float((a - b).mean()),
+                "t": float(t_stat),
+                "p_two_sided": float(p_two),
+                "p_hybrid_lower": float(p_less),
+                "reject_h0": bool(p_two < alpha),
+                "n_folds": int(len(a)),
+            }
+        )
+    return pd.DataFrame(rows)
+
