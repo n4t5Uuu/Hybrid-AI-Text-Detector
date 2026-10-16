@@ -49,7 +49,12 @@ def strip_placeholders(text):
     text = _WHITESPACE_RE.sub(" ", text)
     text = _SPACE_BEFORE_PUNCT_RE.sub(r"\1", text)
     text = _SPACE_AFTER_OPEN_RE.sub(r"\1", text)
-    return text.strip()
+    text = text.strip()
+
+    # Closing gaps can turn "[[ T ]]" into "[[T]]"; strip again so cleanup never leaves a tag shape.
+    if _PLACEHOLDER_RE.search(text):
+        return strip_placeholders(text)
+    return text
 
 
 def count_words(text):
