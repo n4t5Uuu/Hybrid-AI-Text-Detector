@@ -1,26 +1,462 @@
 @import "tailwindcss";
 
+/* Thomasian Gold: ink, paper, and gold reserved for the model's signal. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --ink: #121212;
+  --paper: #f6f6f4;
+  --panel: #ffffff;
+  --text: #121212;
+  --muted: #5c5c58;
+  --rule: #d4d4cf;
+  --track: #e2e2de;
+  --gold: #f5b800;
+  --error: #9b2c1c;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #0e0e0d;
+    --panel: #181816;
+    --text: #edede8;
+    --muted: #a3a39c;
+    --rule: #34342f;
+    --track: #2a2a26;
+    --error: #ff9a85;
   }
 }
 
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--text);
+  font-family: var(--font-geist-sans), sans-serif;
+  caret-color: var(--text);
+  scrollbar-color: var(--muted) var(--paper);
+}
+
+/* Gold is reserved for the model's signal; controls and browser surfaces stay ink and paper. */
+::selection {
+  background: var(--text);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+.masthead {
+  background: var(--ink);
+  color: #f6f6f4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px clamp(16px, 4vw, 56px);
+}
+
+.wordmark {
+  margin: 0;
+  font: 600 clamp(22px, 2.4vw, 30px) / 1.1 var(--font-cinzel), serif;
+  letter-spacing: 0.08em;
+}
+
+.wordmark b {
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.method,
+.token,
+.tokens dt,
+.index,
+.value {
+  font: 500 12px / 1.4 var(--font-geist-mono), monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+}
+
+.method {
+  color: #b6b6ae;
+}
+
+/* The 12-column grid is drawn: one hairline at the start of every column track. */
+.grid {
+  --pad: clamp(16px, 4vw, 56px);
+  --gap: 32px;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 40px var(--gap);
+  padding: 40px var(--pad) 64px;
+  flex: 1;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  align-content: start;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Rules span the full height but only the column area, never the side padding. */
+.grid::before {
+  content: "";
+  position: absolute;
+  inset: 0 var(--pad);
+  z-index: -1;
+  pointer-events: none;
+  background-image: linear-gradient(to right, var(--track) 1px, transparent 1px);
+  background-size: calc((100% + var(--gap)) / 12) 100%;
+  background-repeat: repeat-x;
+}
+
+.paste {
+  grid-column: 1 / 7;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  padding: 28px;
+  min-height: 560px;
+}
+
+/* The white panel is the field: no box inside the box; focus shows on the panel. */
+.paste:focus-within {
+  outline: 2px solid var(--text);
+  outline-offset: -1px;
+}
+
+.paste textarea {
+  flex: 1;
+  min-height: 320px;
+  resize: none;
+  border: 0;
+  border-top: 1px solid var(--rule); /* marks the scroll edge so a scrolled top line doesn't look sliced */
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  padding: 12px 0 0;
+  font: 17px / 1.65 var(--font-geist-sans), sans-serif;
+}
+
+.paste textarea::placeholder {
+  color: var(--muted);
+}
+
+.paste-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  font: 600 14px var(--font-geist-sans), sans-serif;
+  padding: 14px 26px;
+  border-radius: 0;
+  cursor: pointer;
+  transition: background-color 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.primary {
+  background: var(--text);
+  color: var(--paper);
+  border: 1px solid var(--text);
+}
+
+@media (hover: hover) {
+  .primary:not(:disabled):hover {
+    background: transparent;
+    color: var(--text);
+  }
+
+  .secondary:not(:disabled):hover {
+    border-color: var(--text);
+  }
+}
+
+.secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--rule);
+}
+
+.result {
+  grid-column: 7 / 13;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.score {
+  margin: 0;
+  font: 600 clamp(88px, 10vw, 168px) / 0.88 var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.score span {
+  font-size: 0.34em;
+  vertical-align: top;
+  letter-spacing: 0;
+}
+
+.score-caption {
+  margin: -8px 0 0;
+  color: var(--muted);
+}
+
+.band {
+  margin: 0;
+  font: 600 clamp(20px, 2vw, 26px) / 1.25 var(--font-geist-sans), sans-serif;
+}
+
+.rail-wrap {
+  padding-top: 10px;
+}
+
+.rail {
+  position: relative;
+  height: 14px;
+  display: grid;
+  grid-template-columns: 20fr 59fr 21fr;
+  gap: 3px;
+}
+
+.rail i {
+  background: var(--track);
+}
+
+.rail i:last-of-type {
+  background: var(--gold);
+}
+
+.threshold {
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  width: 1px;
+  height: 26px;
+  background: var(--text);
+}
+
+.needle {
+  position: absolute;
+  top: -11px;
+  width: 4px;
+  height: 36px;
+  margin-left: -2px;
+  background: var(--text);
+  animation: settle 0.9s var(--ease-out);
+}
+
+/* Signature moment: the needle sweeps from zero and settles on the score. */
+@keyframes settle {
+  from {
+    left: 0;
+  }
+}
+
+.rail-numbers,
+.rail-bands {
+  font: 500 12px / 1.4 var(--font-geist-mono), monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rail-numbers {
+  position: relative;
+  height: 18px;
+  margin-top: 12px;
+}
+
+.rail-numbers span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.rail-numbers span:first-child {
+  transform: none;
+}
+
+.rail-numbers span:last-child {
+  transform: translateX(-100%);
+}
+
+/* Same proportions as the rail, so each band name sits under its own segment. */
+.rail-bands {
+  display: grid;
+  grid-template-columns: 20fr 59fr 21fr;
+  gap: 3px;
+  margin-top: 2px;
+  text-align: center;
+}
+
+.tokens {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.tokens div {
+  padding: 12px 12px 12px 0;
+  border-right: 1px solid var(--rule);
+}
+
+.tokens div + div {
+  padding-left: 12px;
+}
+
+.tokens div:last-child {
+  border-right: 0;
+}
+
+.tokens dd {
+  margin: 4px 0 0;
+  font: 600 20px var(--font-geist-sans), sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.passages {
+  list-style: none;
+  margin: -6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.passages li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) minmax(80px, 160px) 52px;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.excerpt {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.bar {
+  height: 8px;
+  background: var(--track);
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  background: var(--gold);
+  animation: fill 0.9s var(--ease-out);
+}
+
+@keyframes fill {
+  from {
+    width: 0;
+  }
+}
+
+.value {
+  text-align: right;
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+
+.placeholder {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.error {
+  margin: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--error);
+  color: var(--error);
+  font-size: 14px;
+}
+
+.error code {
+  display: block;
+  margin-top: 8px;
+  font: 14px / 1.5 var(--font-geist-mono), monospace;
+  color: var(--text);
+}
+
+.caveat {
+  margin: 8px 0 0;
+  max-width: 60ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+@media (max-width: 960px) {
+  .grid::before {
+    display: none;
+  }
+  .rail-bands {
+    display: none; /* the band name above the rail carries it on narrow screens */
+  }
+  .paste,
+  .result {
+    grid-column: 1 / -1;
+  }
+  .paste {
+    min-height: 0;
+  }
+  .passages li {
+    grid-template-columns: 28px minmax(0, 1fr) 48px;
+  }
+  .passages .bar {
+    grid-column: 2 / -1;
+    grid-row: 2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .needle,
+  .bar i {
+    animation: none;
+  }
 }
