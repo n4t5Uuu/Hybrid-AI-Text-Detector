@@ -26,7 +26,7 @@ from utils.features.late_fusion import fuse_spacy_electra
 from utils.features.spacy_features import SPACY_FEATURE_NAMES, extract_spacy_matrix, load_spacy_nlp
 from utils.text_prep import chunk_bawe_essays, count_words, strip_placeholders
 
-THRESHOLD = 0.50  # same decision threshold as Table 6
+THRESHOLD = 0.55  # decision threshold agreed with the adviser; same as the headline Table 6
 PASSAGE_TARGET_WORDS = 200  # about the median training passage
 PASSAGE_MAX_WORDS = 520  # longest passage the model saw in training
 MIN_TAIL_WORDS = 75  # a shorter last passage is merged into the one before it
