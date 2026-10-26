@@ -111,7 +111,7 @@ components:
 
 **Creative North Star: "The Thomasian Instrument"**
 
-The page is a measuring instrument issued under the University of Santo Tomas's own colours: an ink masthead, a paper ground ruled by a visible 12-column grid, and a single gold that belongs to the model's signal. The score is read the way a gauge is read: a large tabular numeral, a band name, and a needle on a segmented rail whose proportions are the paper's Table 4 bands, with the 0.50 decision threshold drawn as a tick. Everything around the reading is quiet so the reading carries the weight.
+The page is a measuring instrument issued under the University of Santo Tomas's own colours: an ink masthead, a paper ground ruled by a visible 12-column grid, and a single gold that belongs to the model's signal. The score is read the way a gauge is read: a large tabular numeral, a band name, and a needle on a segmented rail whose proportions are the paper's Table 4 bands, with the 0.55 decision threshold drawn as a tick. Everything around the reading is quiet so the reading carries the weight.
 
 Density is calm and documentary. Structure comes from 1px hairlines and square edges, not from cards, shadows or tint. Labels are set as uppercase Geist Mono tokens, the way a lab instrument stencils its scales; the wordmark alone speaks in Roman capitals (Cinzel). Light and dark follow the device; gold and ink stay fixed across both.
 
@@ -189,7 +189,7 @@ Flat. There are no shadows anywhere. Depth is tonal: the white field panel sits 
 
 ## Shapes
 
-Square. Radius is zero on every element, including buttons, the panel, bars and the rail. Divisions are 1px hairlines. The rail is three flat segments sized 20 / 59 / 21 with 3px gaps; the threshold is a 1px text-colour tick (26px tall) at 50%; the needle is a 4px text-colour bar (36px tall) standing proud of the rail.
+Square. Radius is zero on every element, including buttons, the panel, bars and the rail. Divisions are 1px hairlines. The rail is three flat segments sized 20 / 59 / 21 with 3px gaps; the threshold is a 1px text-colour tick (26px tall) at 55%; the needle is a 4px text-colour bar (36px tall) standing proud of the rail.
 
 ## Components
 
@@ -217,7 +217,7 @@ Blunt, rectangular, inked.
 None beyond the masthead: an ink band, 24px vertical padding, the Cinzel wordmark left and the mono method line right, wrapping on narrow screens.
 
 ### Band Rail (signature)
-Three segments in Table 4 proportions (0-20, 21-79, 80-100), the last in gold and the others in track. A threshold tick at 50%, mono scale numbers at their true positions (0, 20, 50 · threshold, 80, 100), band names centred under their segments. When a result lands the needle sweeps from 0 and settles on the score (0.9s, expo-out). Beneath, a muted mono line states the band set and the threshold relation ("Table 4 bands · above/below 0.50 threshold") rather than a verdict.
+Three segments in Table 4 proportions (0-20, 21-79, 80-100), the last in gold and the others in track. A threshold tick at 55%, mono scale numbers at their true positions (0, 20, 55 · threshold, 80, 100), band names centred under their segments. When a result lands the needle sweeps from 0 and settles on the score (0.9s, expo-out). Beneath, a muted mono line states the band set and the threshold relation ("Table 4 bands · above/below 0.55 threshold") rather than a verdict.
 
 ### Data Tokens
 A three-cell definition row between top and bottom hairlines, cells divided by vertical hairlines: mono label above a tabular Title value.

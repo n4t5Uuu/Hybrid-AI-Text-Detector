@@ -29,7 +29,7 @@ The detector runs the study's own trained hybrid model: spaCy stylometric featur
 - **Language and scope:** English academic text only, and fully AI-generated text only, not partly AI-assisted text. The model was trained on GPT-3.5 (MGTBench), Claude and Gemini outputs against human academic writing (BAWE student essays and MGTBench human originals).
 - **Input limits:** at least 50 words and at most 5,000. Code, equations, citations and URLs are removed before scoring, as in training.
 - **Passages:** long texts are cut into passages of about 200 words (never more than 520), the size the model was trained on. The overall score is the word-weighted mean of the passage scores, and each passage's score is shown.
-- **Decision threshold:** 0.50. At or above it the label is "AI-generated", below it "Human-written".
+- **Decision threshold:** 0.55 (agreed with the adviser). At or above it the label is "AI-generated", below it "Human-written".
 - **Interpretation bands (paper, Table 4):**
   - 0–20%: Likely Human-Written
   - 21–79%: Possible AI Assistance / Mixed Content
@@ -46,7 +46,7 @@ The detector runs the study's own trained hybrid model: spaCy stylometric featur
 - **Test-set results** (`data/processed/models/table6_performance_t050.csv`, threshold 0.50, 45,148 held-out passages):
   - Hybrid: accuracy 90.7%, ROC-AUC 0.970, FPR 9.3%.
   - FPR on BAWE student essays alone: 1.9% (`test_per_source.csv`).
-- **Threshold comparisons:** 0.45 and 0.55 are in `table6_thresholds.csv`.
+- **Threshold comparisons:** 0.45 and 0.50 are in `table6_thresholds.csv`.
 - **Do not claim** more than these numbers, and do not invent users, testimonials, or institutional adoption.
 
 ## Product Principles

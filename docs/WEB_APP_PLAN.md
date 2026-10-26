@@ -53,7 +53,7 @@ Browser (Next.js page)  --POST /api/detect-->  Next.js rewrite  -->  FastAPI :80
 
 - `POST /detect` takes `{ "text": "..." }` and returns:
   - `ai_probability`, from 0 to 100;
-  - `label`: AI when the probability is 50% or more (the same 0.50 threshold as Table 6), otherwise Human;
+  - `label`: AI when the probability is 55% or more (the 0.55 decision threshold agreed with the adviser, also used for the headline Table 6), otherwise Human;
   - `band`, from Table 4 of the paper: 0–20 Likely Human, 21–79 Possible AI Assistance / Mixed, 80–100 Highly Likely AI;
   - `word_count`;
   - a score for each passage, so the UI can show which parts look AI-written.
