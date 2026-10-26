@@ -73,7 +73,7 @@ pip-wheels/
 **/.impeccable/review/
 **/.impeccable/questions/
 **/.impeccable/live/server.json
-**/.impeccable/live/sessions/
+**/.impeccable/live/sessions/ 
 **/.impeccable/live/previews/
 **/.impeccable/live/annotations/
 **/.impeccable/live/cache/
