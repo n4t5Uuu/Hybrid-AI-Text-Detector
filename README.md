@@ -101,13 +101,11 @@ To download Kaggle datasets automatically in `data_ingestion.ipynb`, set up your
 
 ### Running the detector web app
 
-The page ("Penned or Prompted?") needs the trained model at `data/processed/models/xgb_hybrid.json`. Run the API and the page in two terminals from the project root:
+The page ("Penned or Prompted?") needs the trained model at `data/processed/models/xgb_hybrid.json`. From the project root:
 
 ```bash
-# Terminal 1: FastAPI detector (loads spaCy, ELECTRA and XGBoost once; docs at http://localhost:8000/docs)
-uvicorn api.main:app --app-dir src --port 8000
-
-# Terminal 2: Next.js page; /api/* is forwarded to port 8000 (set DETECTOR_API_URL to change it)
+# Starts the FastAPI detector (port 8000, using venv's Python; docs at http://localhost:8000/docs)
+# and the Next.js page; /api/* is forwarded to port 8000 (set DETECTOR_API_URL to change it)
 npm run dev
 ```
 
