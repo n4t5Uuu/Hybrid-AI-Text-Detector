@@ -259,8 +259,7 @@ button:disabled {
 }
 
 .threshold {
-  position: absolute;
-  left: 50%;
+  position: absolute; /* left is set inline from THRESHOLD_PCT */
   top: -6px;
   width: 1px;
   height: 26px;

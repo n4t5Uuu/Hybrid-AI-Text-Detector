@@ -15,6 +15,7 @@ type Result = {
 // Same limits the API enforces (src/api/main.py), checked here so the button can say why it is off.
 const MIN_WORDS = 50;
 const MAX_WORDS = 5000;
+const THRESHOLD_PCT = 55; // decision threshold, same as THRESHOLD in src/api/detector.py
 const SERVICE_DOWN = "Can't reach the detector service. Start it from the project root:";
 const START_COMMAND = "uvicorn api.main:app --app-dir src --port 8000";
 
@@ -35,21 +36,21 @@ function BandRail({ score }: { score: number | null }) {
         role="img"
         aria-label={
           score === null
-            ? "Scale from 0 to 100 percent: likely human up to 20, mixed from 21 to 79, highly likely AI from 80, decision threshold at 50."
-            : `${score} percent on a scale from 0 to 100; decision threshold at 50.`
+            ? `Scale from 0 to 100 percent: likely human up to 20, mixed from 21 to 79, highly likely AI from 80, decision threshold at ${THRESHOLD_PCT}.`
+            : `${score} percent on a scale from 0 to 100; decision threshold at ${THRESHOLD_PCT}.`
         }
       >
         <i />
         <i />
         <i />
-        <span className="threshold" />
+        <span className="threshold" style={{ left: `${THRESHOLD_PCT}%` }} />
         {score !== null && <span className="needle" style={{ left: `${score}%` }} />}
       </div>
       {/* Numbers sit at their true positions on the rail; band names follow the segments. */}
       <div className="rail-numbers" aria-hidden="true">
         <span style={{ left: "0%" }}>0</span>
         <span style={{ left: "20%" }}>20</span>
-        <span style={{ left: "50%" }}>50 · threshold</span>
+        <span style={{ left: `${THRESHOLD_PCT}%` }}>{THRESHOLD_PCT} · threshold</span>
         <span style={{ left: "80%" }}>80</span>
         <span style={{ left: "100%" }}>100</span>
       </div>
